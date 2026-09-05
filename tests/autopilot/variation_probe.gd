@@ -1,5 +1,6 @@
 extends "res://tests/autopilot/probe_base.gd"
 
+const Art = preload("res://scripts/pixel_art.gd")
 const Maze = preload("res://scripts/maze_stage.gd")
 const SnakeStage = preload("res://scripts/snake_stage.gd")
 
@@ -81,6 +82,20 @@ func _ready() -> void:
 	report("palette_color_count", colors.size())
 	if colors.size() != 4:
 		failures.append("four_color_palette")
+	Art.set_theme("copenhagen")
+	game.queue_redraw()
+	game.board.queue_redraw()
+	await settle(3)
+	image = get_viewport().get_texture().get_image()
+	var cph_colors := {}
+	for row in image.get_height():
+		for column in image.get_width():
+			cph_colors[image.get_pixel(column, row).to_rgba32()] = true
+	report("copenhagen_color_count", cph_colors.size())
+	if cph_colors.size() < 5 or cph_colors.size() > 16:
+		failures.append("copenhagen_palette")
+	save_frame("copenhagen_maze")
+	Art.set_theme("green")
 	report("logical_size", str(image.get_size()))
 	report("window_size", str(get_window().size))
 	report("error", ", ".join(failures))

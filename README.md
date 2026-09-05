@@ -16,6 +16,7 @@ The launcher uses the installed macOS Summer Engine. Set `SUMMER_BIN` to use ano
 - Button A starts, retries after damage, and replays after victory or game over. Enter and Space also confirm locally.
 - Button B returns to the title. Escape also works locally.
 - Button C pauses and resumes, including during the transformation. P also pauses locally.
+- On the title screen, Button C switches the visual style between the default four-colour green palette and the Copenhagen style: a 16-colour palette, copper-green snake, maze walls drawn as Nyhavn, Børsen, Rundetårn and Rådhus, parked bicycles as Snake obstacles, and a skyline on the title. The style is not saved; every launch starts green.
 - To play only the arena, launch with `bash retro-ai/run.sh -- --stage=arena`, or press `3` on the title screen. Every start and replay then begins in the arena with a fresh score and three lives.
 
 Start with three lives. Apples score 10, pellets score 5, and defeating the ghost scores 100. Damage resets the current stage's local progress but preserves your total score and remaining lives. A retry waits for movement input. Replay starts from Snake with a fresh score and three lives.
@@ -88,6 +89,9 @@ OUT_DIR="$PWD/retro-ai/builds/checks/checkpoints" bash retro-ai/tests/autopilot/
 # 32 seeds, connected layouts, tail traps, audio signal, and palette.
 OUT_DIR="$PWD/retro-ai/builds/checks/variations" bash retro-ai/tests/autopilot/run.sh "$PWD/retro-ai/tests/autopilot/variation_probe.gd"
 
+# Style toggle: Button C on the title, Copenhagen frames of every stage, at most 16 colours, green stays at 4.
+OUT_DIR="$PWD/retro-ai/builds/checks/theme" bash retro-ai/tests/autopilot/run.sh "$PWD/retro-ai/tests/autopilot/theme_probe.gd"
+
 # Arena balance: three seeds of 300 s with a simple automatic player; reports each generation's lifetime.
 OUT_DIR="$PWD/retro-ai/builds/checks/arena_sim" MAX_SECONDS=300 bash retro-ai/tests/autopilot/run.sh "$PWD/retro-ai/tests/autopilot/arena_sim_probe.gd"
 ```
@@ -112,6 +116,7 @@ Automated probes drive actual input for the full game, then use explicit fixture
 - `scripts/game_board.gd` draws all three stages and interpolates both transformations.
 - `scripts/grid.gd` defines board geometry and input bindings.
 - `scripts/pixel_art.gd` contains the palette, bitmap type, and tiny sprites.
+- `scripts/copenhagen.gd` contains the Copenhagen sprites: six 70x28 landmarks, the bicycle, floor, apple and ghost. `pixel_art.gd` owns the theme switch.
 - `scripts/retro_audio.gd` creates and plays short local PCM sound cues.
 - `scripts/dev/playtest_manager.gd` owns development-only checkpoints.
 

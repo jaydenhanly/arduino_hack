@@ -271,17 +271,19 @@ func _draw_title() -> void:
 	var cph := Art.cph()
 	draw_rect(Rect2(12, 12, 376, 216), Art.INK, false, 2)
 	Art.text(self, "COPENHAGEN / ONE CONTINUOUS GAME" if cph else "RETRO-AI / ONE CONTINUOUS GAME", Vector2(24, 24), 1, Art.DARK)
-	Art.centered(self, "PIXEL", 48, 4)
-	Art.centered(self, "SHIFT", 83, 4)
+	# The skyline needs the bottom 30 px, so the Copenhagen layout sits 10 px higher.
+	var lift := 10 if cph else 0
+	Art.centered(self, "PIXEL", 48 - lift, 4)
+	Art.centered(self, "SHIFT", 83 - lift, 4)
 	for index in 7:
-		var position_value := Vector2(123 + index * 20, 127 + (8 if index > 3 else 0))
+		var position_value := Vector2(123 + index * 20, 127 - lift + (8 if index > 3 else 0))
 		draw_rect(Rect2(position_value, Vector2(16, 16)), board._head() if index == 0 else board._body())
 		if index == 0:
 			draw_rect(Rect2(position_value + Vector2(3, 3), Vector2(3, 3)), board._eye())
-	Art.centered(self, "A LITTLE SNAKE. A BIG CITY." if cph else "A LITTLE SNAKE. A BIG CHANGE.", 157)
+	Art.centered(self, "A LITTLE SNAKE. A BIG CITY." if cph else "A LITTLE SNAKE. A BIG CHANGE.", 157 - lift)
 	if fmod(clock, 1.1) < 0.85:
-		Art.centered(self, "BUTTON A START", 173 if cph else 181, 2)
-	Art.centered(self, "JOYSTICK MOVE  /  BUTTON C STYLE", 190 if cph else 211, 1, Art.DARK)
+		Art.centered(self, "BUTTON A START", 165 if cph else 181, 2)
+	Art.centered(self, "JOYSTICK MOVE  /  BUTTON C STYLE", 184 if cph else 211, 1, Art.DARK)
 	if cph:
 		# Five landmarks along the bottom edge, the same sprites the maze walls use.
 		Cph.skyline(self, 21, 198)
