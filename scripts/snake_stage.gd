@@ -15,6 +15,7 @@ const WALL_TIER_APPLES := 10
 const SPIDER_TIER_APPLES := 15
 const MUSHROOM_TIER_APPLES := 20
 const APPLE_TARGET := 25
+const APPLE_POINTS := 10
 const SPIDER_STEP_TICKS := 2
 const TIER_ONE_WALLS := 3
 const TIER_TWO_WALLS := 3
@@ -97,15 +98,19 @@ func step() -> void:
 	var grows := next == apple
 	var solid_body := body.slice(0, body.size() if grows else body.size() - 1)
 	var reason := ""
+	var bitten := 0
 	if next in walls:
 		reason = "WALL HIT"
 	elif next in spiders:
 		reason = "SPIDER BIT YOU"
 	elif next in solid_body:
 		reason = "TAIL HIT"
+		bitten = body.size() - body.find(next)
 	if not reason.is_empty():
 		if not invulnerable:
 			stopped = true
+			if bitten > 0:
+				points_earned.emit(-bitten * APPLE_POINTS)
 			life_lost.emit(reason)
 		return
 	body.push_front(next)
@@ -115,7 +120,7 @@ func step() -> void:
 		spawn_mushroom()
 	if grows:
 		apples += 1
-		points_earned.emit(10)
+		points_earned.emit(APPLE_POINTS)
 		_check_tiers()
 		if stopped:
 			return

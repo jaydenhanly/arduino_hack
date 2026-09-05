@@ -120,8 +120,8 @@ func _on_boost() -> void:
 	audio.play("boost")
 
 func _on_points(amount: int) -> void:
-	score += amount
-	if amount < 100:
+	score = maxi(0, score + amount)
+	if amount > 0 and amount < 100:
 		audio.play("apple" if current_stage == "snake" else "pellet")
 
 func _on_life_lost(reason: String) -> void:

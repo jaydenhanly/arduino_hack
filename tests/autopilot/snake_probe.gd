@@ -69,8 +69,11 @@ func _ready() -> void:
 			snake.spiders.assign([Vector2i(7, 6)])
 		snake.step()
 		check("%s_costs_one_life" % collision, game.lives == 4 and game.state == game.State.LIFE_LOST)
+		# A tail bite also refunds 10 points per severed segment; here 2 of 5 are bitten off.
+		var expected_score := 10 if collision == "body" else 30
+		check("%s_scores_the_bite" % collision, game.score == expected_score)
 		await press("confirm", 20)
-		check("%s_restart_preserves_run" % collision, game.lives == 4 and game.score == 30 and game.stage.body.size() == 1 and game.stage.apples == 0)
+		check("%s_restart_preserves_run" % collision, game.lives == 4 and game.score == expected_score and game.stage.body.size() == 1 and game.stage.apples == 0)
 	game.lives = 1
 	game.stage.steer(Vector2i.RIGHT)
 	game.stage.body.assign([Vector2i(6, 6), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6), Vector2i(8, 6)])
