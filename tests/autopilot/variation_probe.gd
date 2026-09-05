@@ -14,7 +14,7 @@ func _ready() -> void:
 		game.playtest.select_stage("maze", "start")
 		var valid: bool = game.current_stage == "maze" and game.playtest.last_error.is_empty()
 		if valid:
-			valid = game.stage.walls.size() == 4 and game.stage.reachable_cells(game.stage.body[0]).size() == 248
+			valid = game.stage.walls.size() == game.stage.topology.wall_cells.size() and game.stage.reachable_cells(game.stage.body[0]).size() == 288 - game.stage.walls.size()
 			valid = valid and game.stage.walkable(game.stage.ghost) and game.score == SnakeStage.APPLE_TARGET * 10
 			for cell: Vector2i in game.stage.body:
 				valid = valid and game.stage.walkable(cell)

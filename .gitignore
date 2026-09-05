@@ -15,6 +15,7 @@ Thumbs.db
 
 # Probe output, exports, fetched LLM assets
 tests/autopilot/out/
+tests/roadmap/out/
 builds/
 build/
 vendor/llm/

@@ -1,0 +1,10 @@
+Welcome to Summer Engine (c) built on the awesome work by Godot 2007-present Juan Linietsky, Ariel Manzur & Godot Contributors.
+OpenGL API 4.1 Metal - 90.5 - Compatibility - Using Device: Apple - Apple M5
+
+[SE] AuthManager: CLI credential found; desktop session exchange required
+[SE] Sparkle: Updater initialized with feed: https://www.summerengine.com/api/desktop/sparkle/appcast.xml
+[SE] macOS: get_framework_executable skipping NSBundle (file not dir): /Applications/Summer.app/Contents/Resources/dotnet/host/fxr/8.0.24/libhostfxr.dylib
+ERROR: SummerProbe: probe script does not inherit from Node.
+   at: start (main/main.cpp:5126)
+WARNING: 2 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)

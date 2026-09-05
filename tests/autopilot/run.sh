@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the autopilot against this project and print the results.
 #
-#   bash tests/autopilot/run.sh                    # runs autopilot.gd
+#   bash tests/autopilot/run.sh                    # runs the four-stage probe
 #   bash tests/autopilot/run.sh my_probe.gd        # runs a different probe
 #
 # No editor required. This spawns the engine's offscreen verify instance, which
@@ -9,7 +9,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PROBE="${1:-$PROJECT_DIR/tests/autopilot/pixel_shift_probe.gd}"
+PROBE="${1:-$PROJECT_DIR/tests/roadmap/full_run_probe.gd}"
 OUT="${OUT_DIR:-$PROJECT_DIR/tests/autopilot/out}"
 MAX_SECONDS="${MAX_SECONDS:-90}"
 

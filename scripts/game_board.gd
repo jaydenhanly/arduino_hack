@@ -2,9 +2,8 @@ extends Node2D
 
 const Grid = preload("res://scripts/grid.gd")
 const Art = preload("res://scripts/pixel_art.gd")
-const Cph = preload("res://scripts/copenhagen.gd")
-
-const SPIDER_SMALL := [["10001", "01110", "11111", "01110", "10001"], ["00000", "11011", "01110", "11111", "01010"]]
+const Presentation = preload("res://scripts/presentation_director.gd")
+const Transition = preload("res://scripts/transition_director.gd")
 
 var stage: RefCounted
 var clock := 0.0
@@ -12,261 +11,139 @@ var mode := "snake"
 var shift_progress := 0.0
 var shift_source: Dictionary = {}
 var shift_target: RefCounted
+var shift_from := "snake"
+var shift_to := "maze"
 
 func _draw() -> void:
-	if mode == "arena" and stage != null and stage.meltdown() and stage.started and not stage.stopped:
-		draw_set_transform(Vector2(roundf(sin(clock * 61.0) * 1.5), roundf(cos(clock * 53.0) * 1.5)))
-	draw_rect(Rect2(Grid.ORIGIN - Vector2(3, 3), Vector2(Grid.SIZE * Grid.CELL) + Vector2(6, 6)), Art.INK, false, 2)
-	if Art.cph():
-		Cph.floor(self, Grid.ORIGIN, Grid.SIZE, Grid.CELL)
-	else:
-		for row in Grid.SIZE.y:
-			for column in Grid.SIZE.x:
-				draw_rect(Rect2(Grid.ORIGIN + Vector2(column, row) * Grid.CELL + Vector2(6, 6), Vector2.ONE), Art.MID)
 	if stage == null:
 		return
 	if mode == "shifting":
 		_draw_shift()
+	else:
+		_draw_stage(stage, mode)
+
+func _draw_stage(value: RefCounted, stage_name: String) -> void:
+	var colors := Presentation.palette(stage_name)
+	draw_rect(Rect2(0, 0, 400, 192), colors[0])
+	if stage_name in ["frogger", "asteroids"]:
+		value.draw_stage(self, clock)
 		return
-	if mode == "shifting_arena":
-		_draw_arena_shift()
-		return
-	if mode == "maze":
-		_draw_maze()
-		return
-	if mode == "arena":
-		_draw_arena()
-		return
-	var snake: RefCounted = stage
+	draw_rect(Rect2(Grid.ORIGIN - Vector2(3, 3), Vector2(Grid.SIZE * Grid.CELL) + Vector2(6, 6)), colors[2], false, 2)
+	for row in Grid.SIZE.y:
+		for column in Grid.SIZE.x:
+			draw_rect(Rect2(Grid.ORIGIN + Vector2(column, row) * Grid.CELL + Vector2(6, 6), Vector2.ONE), colors[3] if stage_name == "snake" else Color("99b9a1"))
+	if stage_name == "maze":
+		_draw_maze(value)
+	else:
+		_draw_snake(value)
+
+func _draw_snake(snake: RefCounted) -> void:
 	for wall: Vector2i in snake.walls:
-		if Art.cph():
-			Cph.bike(self, Grid.rect(wall).position, Cph.C.sky)
-			continue
-		var wall_tile := Grid.rect(wall).grow(-1)
-		draw_rect(wall_tile, Art.DARK)
-		draw_rect(wall_tile.grow(-3), Art.LIGHT, false, 1)
+		_wall(Grid.rect(wall).grow(-1), Art.DARK, Art.LIGHT)
 	for spider: Vector2i in snake.spiders:
-		Art.bitmap(self, Art.SPIDER, Grid.rect(spider).position + Vector2(3, 3), 1, Art.INK)
+		Art.bitmap(self, Art.SPIDER, Grid.rect(spider).position + Vector2(2, 2), 1, Art.INK)
 	if snake.mushroom.x >= 0:
-		Art.bitmap(self, Art.MUSHROOM, Grid.rect(snake.mushroom).position + Vector2(3, 3), 1, Cph.C.red if Art.cph() else Art.INK)
-	_apple(Grid.rect(snake.apple).position + Vector2(3, 3))
+		Art.bitmap(self, Art.MUSHROOM, Grid.rect(snake.mushroom).position + Vector2(2, 2), 1, Art.INK)
+	Art.bitmap(self, Art.APPLE, Grid.rect(snake.apple).position + Vector2(2, 2), 1, Art.INK)
 	for index in range(snake.body.size() - 1, -1, -1):
 		if snake.body.size() == 1 and fmod(clock, 0.8) > 0.5:
 			continue
-		var cell: Vector2i = snake.body[index]
-		var tile := Grid.rect(cell).grow(-1)
+		var tile := Grid.rect(snake.body[index]).grow(-1)
 		if snake.stretch > 0:
 			tile.position = Grid.rect(snake.body[0]).grow(-1).position.lerp(tile.position, 1.0 - snake.stretch / 0.22).round()
-		draw_rect(tile, _head() if index == 0 else _body())
+		draw_rect(tile, Art.INK if index == 0 else Art.DARK)
 		if index == 0:
-			draw_rect(Rect2(tile.position + Vector2(3, 3), Vector2(2, 2)), _eye())
-			draw_rect(Rect2(tile.position + Vector2(7, 3), Vector2(2, 2)), _eye())
+			_eyes(tile.position, Art.LIGHT)
 
-func _draw_maze() -> void:
-	for index in stage.walls.size():
-		var wall: Rect2i = stage.walls[index]
-		_wall(Rect2(Grid.ORIGIN + Vector2(wall.position) * Grid.CELL, Vector2(wall.size) * Grid.CELL), index)
-	for pellet: Vector2i in stage.pellets:
-		draw_rect(Rect2(Grid.rect(pellet).get_center().round() - Vector2.ONE * 2, Vector2.ONE * 4), _dot())
-	if stage.ghost_alive:
-		if stage.started and stage.ghost_elapsed > 0.17:
-			draw_rect(Grid.rect(stage.ghost_next).grow(-3), Art.DARK, false, 1)
-		_ghost(Grid.rect(stage.ghost).position)
-	_draw_tail(stage.body)
+func _draw_maze(maze: RefCounted) -> void:
+	var colors := Presentation.palette("maze")
+	for endpoint: Vector2i in [maze.topology.tunnel_left, maze.topology.tunnel_right]:
+		var edge_x: float = Grid.ORIGIN.x - 4 if endpoint.x == 0 else Grid.ORIGIN.x + Grid.SIZE.x * Grid.CELL
+		draw_rect(Rect2(Vector2(edge_x, Grid.rect(endpoint).position.y), Vector2(4, Grid.CELL)), colors[0])
+	for cell: Vector2i in maze.topology.wall_cells:
+		var tile := Grid.rect(cell)
+		draw_rect(tile, colors[1])
+		for heading in Grid.DIRECTIONS:
+			if maze.walkable(cell + heading):
+				var center := tile.get_center() + Vector2(heading) * (Grid.CELL * 0.5 - 1)
+				var half_edge := Vector2(0, 6) if heading.x != 0 else Vector2(6, 0)
+				draw_line(center - half_edge, center + half_edge, colors[2])
+	for pellet: Vector2i in maze.pellets:
+		draw_rect(Rect2(Grid.rect(pellet).get_center().round() - Vector2.ONE, Vector2.ONE * 3), colors[3])
+	if maze.ghost_alive:
+		if maze.started and maze.ghost_elapsed > 0.17:
+			draw_rect(Grid.rect(maze.ghost_next).grow(-3), colors[1], false, 1)
+		_ghost(Grid.rect(maze.ghost).position, colors[3], colors[2])
+	elif maze.respawn_warning:
+		if int(clock * 8) % 2 == 0:
+			_ghost(Grid.rect(maze.ghost).position, colors[3], colors[2])
+	_draw_tail(maze.body, colors[2], colors[1], colors[0])
 
 func _draw_shift() -> void:
-	var eased := smoothstep(0.0, 1.0, shift_progress)
-	for index in shift_target.walls.size():
-		var wall: Rect2i = shift_target.walls[index]
-		var source_rect := Grid.rect(shift_source.body[index + 4]).grow(-1)
-		var target_rect := Rect2(Grid.ORIGIN + Vector2(wall.position) * Grid.CELL, Vector2(wall.size) * Grid.CELL)
-		_wall(Rect2(source_rect.position.lerp(target_rect.position, eased).round(), source_rect.size.lerp(target_rect.size, eased).round()), index)
-	var apple_position := Grid.rect(shift_source.apple).position + Vector2(3, 3)
-	if shift_progress < 0.4:
-		_apple(apple_position)
-	var scatter := smoothstep(0.18, 0.95, shift_progress)
-	for pellet: Vector2i in shift_target.pellets:
-		var pellet_position := Grid.rect(pellet).get_center() - Vector2.ONE * 2
-		draw_rect(Rect2(apple_position.lerp(pellet_position, scatter).round(), Vector2.ONE * 4), _dot())
-	var obstacle_rect := Grid.rect(shift_source.ghost_seed).grow(-1)
-	var awakening := smoothstep(0.35, 0.85, shift_progress)
-	var shell := obstacle_rect.grow(-2 * awakening)
-	draw_rect(Rect2(shell.position.round(), shell.size.round()), Art.DARK)
-	for row in 8:
-		for column in 8:
-			var is_ghost_pixel: bool = Art.GHOST[row][column] == "1"
-			var threshold := float(row * 8 + column) / 64.0
-			if is_ghost_pixel or awakening < threshold:
-				draw_rect(Rect2(obstacle_rect.position + Vector2(column + 2, row + 2), Vector2.ONE), Art.INK)
-	if awakening > 0.6:
-		draw_rect(Rect2(obstacle_rect.position + Vector2(4, 5), Vector2(2, 2)), _eye())
-		draw_rect(Rect2(obstacle_rect.position + Vector2(8, 5), Vector2(2, 2)), _eye())
-	_draw_tail(shift_target.body)
+	var frame := Transition.cut(shift_progress)
+	var show_target := frame >= 9 or (frame >= 2 and frame % 3 == 2)
+	_draw_stage(shift_target if show_target else stage, shift_to if show_target else shift_from)
+	if frame % 3 == 1:
+		draw_rect(Rect2(12, 30, 376, 160), Color(0.82, 0.92, 0.73, 0.83))
+		_draw_conversions(frame)
+	for stripe in 4:
+		var stripe_y := 35 + posmod(frame * 19 + stripe * 43, 148)
+		if frame % 2 == stripe % 2:
+			draw_rect(Rect2(12, stripe_y, 376, 2), Color(0.08, 0.2, 0.18, 0.28))
+	var origin: Vector2 = shift_source.get("player_position", stage.get_player_position())
+	var target_position: Vector2 = shift_target.get_player_position()
+	var fraction := floorf(shift_progress * 4.0) / 4.0
+	var player_position := origin.lerp(target_position, fraction).round()
+	draw_rect(Rect2(player_position - Vector2(5, 5), Vector2(10, 10)), Art.INK)
+	_eyes(player_position - Vector2(5, 5), Art.LIGHT)
 
-func _draw_arena() -> void:
-	var depth: int = stage.fire_depth()
-	if depth > 0:
-		for row in stage.SIZE.y:
-			for column in stage.SIZE.x:
-				var cell := Vector2i(column, row)
-				if stage.burning(cell):
-					_flame(cell, stage.rect(cell))
-	for morsel: Vector2i in stage.food:
-		_food(stage.rect(morsel))
-	for wall: Vector2i in stage.walls:
-		var wall_tile: Rect2 = stage.rect(wall).grow(-1)
-		draw_rect(wall_tile, Art.DARK)
-		draw_rect(Rect2(wall_tile.position + Vector2(2, 2), Vector2.ONE), Art.LIGHT)
-	for spider: Vector2i in stage.spiders:
-		var legs := int(clock * 8.0) % 2
-		Art.bitmap(self, SPIDER_SMALL[legs], stage.rect(spider).position + Vector2(1, 1), 1, Art.INK)
-	for bot in stage.bots:
-		_draw_bot(bot.body, bot.generation)
-	_draw_player(stage.body)
-	if not stage.started and fmod(clock, 0.6) < 0.4:
-		draw_rect(stage.rect(stage.body[0]).grow(2), Art.INK, false, 1)
+func _draw_conversions(frame: int) -> void:
+	var fraction := float(frame / 3) / 3.0
+	if shift_from == "snake":
+		var body: Array = shift_source.get("body", [])
+		for index in shift_target.walls.size():
+			var wall: Rect2i = shift_target.walls[index]
+			var from := Grid.rect(body[index % body.size()]) if not body.is_empty() else Rect2(190, 96, 12, 12)
+			var to := Rect2(Grid.ORIGIN + Vector2(wall.position) * Grid.CELL, Vector2(wall.size) * Grid.CELL)
+			_wall(Rect2(from.position.lerp(to.position, fraction).round(), from.size.lerp(to.size, fraction).round()), Art.DARK, Art.LIGHT)
+		var apple: Vector2i = shift_source.get("apple", Vector2i(12, 6))
+		for pellet: Vector2i in shift_target.pellets:
+			var point := Grid.rect(apple).get_center().lerp(Grid.rect(pellet).get_center(), fraction).round()
+			draw_rect(Rect2(point, Vector2(3, 3)), Art.DARK)
+	elif shift_from == "maze":
+		for index in stage.walls.size():
+			var wall: Rect2i = stage.walls[index]
+			var from := Grid.ORIGIN + Vector2(wall.position) * Grid.CELL
+			var to := Vector2(12, 48 + (index % 5) * 24)
+			var width := lerpf(wall.size.x * Grid.CELL, 376, fraction)
+			draw_rect(Rect2(from.lerp(to, fraction).round(), Vector2(width, 6)), Art.DARK)
+	else:
+		for row in 5:
+			for column in 9:
+				var origin := Vector2(18 + column * 42, 48 + row * 24)
+				var drift := Vector2((column - 4) * frame, (row - 2) * frame)
+				draw_rect(Rect2(origin + drift, Vector2(8, 8)), Color("486771"))
 
-func _draw_arena_shift() -> void:
-	var eased := smoothstep(0.0, 1.0, shift_progress)
-	var scale_px := lerpf(Grid.CELL, shift_target.CELL, eased)
-	var offset := Vector2(shift_target.OFFSET) * eased
-	var walls_fade := smoothstep(0.0, 0.7, shift_progress)
-	for wall: Rect2i in shift_source.walls:
-		var area := Rect2(Grid.ORIGIN + (Vector2(wall.position) + offset) * scale_px, Vector2(wall.size) * scale_px)
-		var shrink := Vector2(area.size) * 0.5 * walls_fade
-		var shrunk := area.grow_individual(-shrink.x, -shrink.y, -shrink.x, -shrink.y)
-		if shrunk.size.x > 1 and shrunk.size.y > 1:
-			_wall(Rect2(shrunk.position.round(), shrunk.size.round()))
-	var scatter := smoothstep(0.1, 0.9, shift_progress)
-	var ghost_origin := Grid.ORIGIN + (Vector2(shift_source.ghost) + offset) * scale_px
-	for index in shift_target.food.size():
-		var morsel: Vector2i = shift_target.food[index]
-		var from := ghost_origin + Vector2.ONE * scale_px * 0.5
-		if index < shift_source.pellets.size():
-			from = Grid.ORIGIN + (Vector2(shift_source.pellets[index]) + offset + Vector2(0.5, 0.5)) * scale_px
-		var target: Vector2 = shift_target.rect(morsel).get_center()
-		var dot := from.lerp(target, scatter).round()
-		draw_rect(Rect2(dot - Vector2.ONE, Vector2.ONE * 3), _dot())
-	if shift_progress < 0.5:
-		var pixel := scale_px / 14.0
-		for row in 8:
-			for column in 8:
-				if Art.GHOST[row][column] == "1" and fmod(float(row * 8 + column) * 0.37, 1.0) > shift_progress * 2.0:
-					draw_rect(Rect2((ghost_origin + Vector2(column + 3, row + 3) * pixel).round(), Vector2.ONE * maxf(1.0, pixel)), Art.INK)
-	var wake := smoothstep(0.55, 1.0, shift_progress)
-	for bot in shift_target.bots:
-		for index in bot.body.size():
-			if float(index) / bot.body.size() < wake:
-				var tile: Rect2 = shift_target.rect(bot.body[index]).grow(-1)
-				draw_rect(tile, _bot_edge())
-				draw_rect(tile.grow(-2), _bot_fill(bot.generation))
-	for index in range(shift_source.body.size() - 1, -1, -1):
-		var cell: Vector2i = shift_source.body[index]
-		var tile := Rect2(Grid.ORIGIN + (Vector2(cell) + offset) * scale_px, Vector2.ONE * scale_px).grow(-1)
-		draw_rect(Rect2(tile.position.round(), tile.size.round()), _head() if index == 0 else _body())
-		if index == 0:
-			var eye := maxf(1.0, scale_px / 7.0)
-			draw_rect(Rect2((tile.position + Vector2(2, 2) * eye).round(), Vector2.ONE * eye), _eye())
-			draw_rect(Rect2((tile.position + Vector2(4, 2) * eye).round(), Vector2.ONE * eye), _eye())
-
-func _flame(cell: Vector2i, area: Rect2) -> void:
-	var phase := int(clock * 14.0) + cell.x * 3 + cell.y * 5
-	var tone := phase % 4
-	var hot: Color = Cph.C.red if Art.cph() else Art.DARK
-	var char_color: Color = Cph.C.brick_dark if Art.cph() else Art.INK
-	var spark: Color = Cph.C.ochre if Art.cph() else Art.LIGHT
-	draw_rect(area, hot if tone != 0 else char_color)
-	var tip := area.position + Vector2(1 + (phase / 2) % 4, 1 + phase % 3)
-	draw_rect(Rect2(tip, Vector2(2, 2)), spark if tone == 2 else char_color)
-	if tone == 1:
-		draw_rect(Rect2(area.position + Vector2(3, 4), Vector2.ONE), spark)
-
-func _food(area: Rect2) -> void:
-	draw_rect(Rect2(area.get_center().round() - Vector2.ONE, Vector2.ONE * 3), _dot())
-
-func _draw_player(cells: Array[Vector2i]) -> void:
-	for index in range(cells.size() - 1, -1, -1):
-		var tile: Rect2 = stage.rect(cells[index]).grow(-1)
-		draw_rect(tile, _head() if index == 0 else _body())
-		if index == 0:
-			draw_rect(Rect2(tile.position + Vector2(1, 1), Vector2.ONE), _eye())
-			draw_rect(Rect2(tile.position + Vector2(3, 1), Vector2.ONE), _eye())
-
-func _draw_bot(cells: Array[Vector2i], generation: int) -> void:
-	for index in range(cells.size() - 1, -1, -1):
-		var tile: Rect2 = stage.rect(cells[index]).grow(-1)
-		if index == 0:
-			draw_rect(tile, _bot_head())
-			draw_rect(Rect2(tile.position + Vector2(1, 1), Vector2.ONE), _eye())
-			draw_rect(Rect2(tile.position + Vector2(3, 1), Vector2.ONE), _eye())
-			continue
-		draw_rect(tile, _bot_edge(), false, 1)
-		draw_rect(tile.grow(-1), _bot_fill(generation))
-		if generation >= 4:
-			draw_rect(tile.grow(-2), Art.INK)
-
-func _draw_tail(cells: Array[Vector2i]) -> void:
+func _draw_tail(cells: Array[Vector2i], ink: Color, dark: Color, light: Color) -> void:
 	for index in range(cells.size() - 1, -1, -1):
 		var tile := Grid.rect(cells[index]).grow(-1)
-		draw_rect(tile, _head() if index == 0 else _body())
+		draw_rect(tile, ink if index == 0 else dark)
 		if index == 0:
-			draw_rect(Rect2(tile.position + Vector2(3, 3), Vector2(2, 2)), _eye())
-			draw_rect(Rect2(tile.position + Vector2(7, 3), Vector2(2, 2)), _eye())
+			_eyes(tile.position, light)
 		else:
-			draw_rect(tile.grow(-4), _core())
+			draw_rect(tile.grow(-3), light)
 
-# Maze walls. In the Copenhagen theme a full 5x2 wall is a landmark; anything
-# still growing or dissolving is a brick block.
-func _wall(area: Rect2, index: int = -1) -> void:
-	if Art.cph():
-		if index >= 0 and area.size == Vector2(Grid.CELL * 5, Grid.CELL * 2):
-			Cph.wall_building(self, index, area.position.x, area.position.y)
-		else:
-			Cph.brick_block(self, area)
-		return
-	draw_rect(area, Art.DARK)
+func _eyes(origin: Vector2, color: Color) -> void:
+	draw_rect(Rect2(origin + Vector2(2, 2), Vector2(2, 2)), color)
+	draw_rect(Rect2(origin + Vector2(6, 2), Vector2(2, 2)), color)
+
+func _wall(area: Rect2, dark: Color, light: Color) -> void:
+	draw_rect(area, dark)
 	if area.size.x > 6 and area.size.y > 6:
-		draw_rect(area.grow(-3), Art.LIGHT, false, 1)
+		draw_rect(area.grow(-3), light, false, 1)
 
-func _ghost(origin: Vector2) -> void:
-	if Art.cph():
-		Cph.ghost(self, origin + Vector2(3, 3))
-		return
-	Art.bitmap(self, Art.GHOST, origin + Vector2(3, 3), 1, Art.INK)
-	draw_rect(Rect2(origin + Vector2(5, 6), Vector2(2, 2)), Art.LIGHT)
-	draw_rect(Rect2(origin + Vector2(9, 6), Vector2(2, 2)), Art.LIGHT)
-
-func _apple(origin: Vector2) -> void:
-	if Art.cph():
-		Cph.apple(self, origin)
-		return
-	Art.bitmap(self, Art.APPLE, origin, 1, Art.INK)
-
-# Player snake: copper roofs in Copenhagen, ink and dark green otherwise.
-func _head() -> Color:
-	return Cph.C.copper_dark if Art.cph() else Art.INK
-
-func _body() -> Color:
-	return Cph.C.copper if Art.cph() else Art.DARK
-
-func _core() -> Color:
-	return Cph.C.copper_dark if Art.cph() else Art.MID
-
-func _eye() -> Color:
-	return Cph.C.white if Art.cph() else Art.LIGHT
-
-# Pellets and arena food.
-func _dot() -> Color:
-	return Cph.C.ochre if Art.cph() else Art.DARK
-
-# Computer snakes: Nyhavn reds against the player's copper green.
-func _bot_head() -> Color:
-	return Cph.C.brick_dark if Art.cph() else Art.DARK
-
-func _bot_edge() -> Color:
-	return Cph.C.brick if Art.cph() else Art.DARK
-
-func _bot_fill(generation: int) -> Color:
-	if Art.cph():
-		return Cph.C.terra if generation < 2 else Cph.C.red
-	return Art.MID if generation < 2 else Art.DARK
+func _ghost(origin: Vector2, color: Color, ink: Color) -> void:
+	var bounce := Vector2(0, int(clock * 4.0) % 2)
+	Art.bitmap(self, Art.GHOST, origin + Vector2(2, 1) + bounce, 1, color)
+	draw_rect(Rect2(origin + Vector2(4, 4) + bounce, Vector2(2, 2)), ink)
+	draw_rect(Rect2(origin + Vector2(8, 4) + bounce, Vector2(2, 2)), ink)
