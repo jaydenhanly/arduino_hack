@@ -7,6 +7,7 @@ signal objective_completed
 const Grid = preload("res://scripts/grid.gd")
 const STEP_SECONDS := 0.15
 const GHOST_SECONDS := 0.36
+const WALL_COUNT := 4
 
 var body: Array[Vector2i] = []
 var direction := Vector2i.ZERO
@@ -29,7 +30,7 @@ func initialize(snapshot: Dictionary) -> void:
 	body.assign(source.body.slice(0, 4))
 	direction = source.direction
 	pending_direction = direction
-	ghost = source.obstacle
+	ghost = source.ghost_seed
 	walls.clear()
 	pellets.clear()
 	_build_walls()
@@ -52,7 +53,7 @@ func _build_walls() -> void:
 	for heading in Grid.DIRECTIONS:
 		protected.append(body[0] + heading)
 	var preferred: Array[Vector2i] = [Vector2i(4, 2), Vector2i(15, 2), Vector2i(4, 8), Vector2i(15, 8)]
-	for wall_index in source.body.size() - body.size():
+	for wall_index in WALL_COUNT:
 		var candidates: Array[Vector2i] = [preferred[wall_index % preferred.size()]]
 		for row in range(1, Grid.SIZE.y - 2):
 			for column in range(1, Grid.SIZE.x - 5):

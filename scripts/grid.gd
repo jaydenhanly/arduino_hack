@@ -9,6 +9,9 @@ const ACTIONS: Array[StringName] = [&"move_up", &"move_left", &"move_down", &"mo
 static func inside(cell: Vector2i) -> bool:
 	return cell.x >= 0 and cell.y >= 0 and cell.x < SIZE.x and cell.y < SIZE.y
 
+static func wrap(cell: Vector2i) -> Vector2i:
+	return Vector2i(posmod(cell.x, SIZE.x), posmod(cell.y, SIZE.y))
+
 static func rect(cell: Vector2i) -> Rect2:
 	return Rect2(ORIGIN + Vector2(cell) * CELL, Vector2.ONE * CELL)
 

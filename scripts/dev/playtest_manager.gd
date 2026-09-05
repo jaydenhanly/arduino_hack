@@ -2,6 +2,7 @@ extends Node
 
 const Grid = preload("res://scripts/grid.gd")
 const Art = preload("res://scripts/pixel_art.gd")
+const SnakeStage = preload("res://scripts/snake_stage.gd")
 const PRESETS := ["start", "midpoint", "near-completion"]
 
 var game: Node
@@ -68,11 +69,11 @@ func select_stage(stage_name: String, preset: String = "start") -> void:
 	last_error = ""
 	game.start_run(seed_value)
 	if stage_name == "snake":
-		var target := 0 if preset == "start" else (2 if preset == "midpoint" else 4)
+		var target := 0 if preset == "start" else (SnakeStage.APPLE_TARGET / 2 if preset == "midpoint" else SnakeStage.APPLE_TARGET - 1)
 		_feed_snake(target)
 		game.stage.awaiting_input = true
 	else:
-		_feed_snake(5)
+		_feed_snake(SnakeStage.APPLE_TARGET)
 		if game.state != game.State.SHIFTING:
 			return
 		game._enter_maze()
@@ -94,7 +95,7 @@ func complete_objective() -> void:
 			game.restart_stage()
 		if game.state == game.State.PAUSED:
 			game.state = game.State.PLAYING
-		_feed_snake(5)
+		_feed_snake(SnakeStage.APPLE_TARGET)
 	else:
 		if game.state != game.State.PLAYING:
 			game.restart_stage()
@@ -103,23 +104,51 @@ func complete_objective() -> void:
 
 func _feed_snake(target: int) -> void:
 	var steps := 0
-	while game.current_stage == "snake" and game.stage.apples < target and steps < 1000:
+	while game.current_stage == "snake" and game.stage.apples < target and steps < 4000:
 		var snake: RefCounted = game.stage
 		var blocked: Array[Vector2i] = snake.body.slice(1)
-		blocked.append(snake.obstacle)
+		blocked.append_array(snake.walls)
+		blocked.append_array(snake.spiders)
 		if snake.direction != Vector2i.ZERO:
 			blocked.append(snake.body[0] - snake.direction)
-		var path := _path(snake.body[0], snake.apple, blocked)
+		var path := _path_wrap(snake.body[0], snake.apple, blocked)
 		if path.is_empty():
 			last_error = "NO SAFE SNAKE ROUTE"
 			return
-		snake.steer(path[0] - snake.body[0])
+		snake.steer(_heading_to(snake.body[0], path[0]))
 		snake.step()
 		steps += 1
 		if game.state != game.State.PLAYING:
 			break
-	if steps == 1000:
+	if steps == 4000:
 		last_error = "CHECKPOINT STEP LIMIT"
+
+func _heading_to(from: Vector2i, to: Vector2i) -> Vector2i:
+	for heading in Grid.DIRECTIONS:
+		if Grid.wrap(from + heading) == to:
+			return heading
+	return Vector2i.ZERO
+
+func _path_wrap(start: Vector2i, target: Vector2i, blocked: Array[Vector2i]) -> Array[Vector2i]:
+	var queue: Array[Vector2i] = [start]
+	var previous := {start: start}
+	var cursor := 0
+	while cursor < queue.size():
+		var cell := queue[cursor]
+		cursor += 1
+		if cell == target:
+			var result: Array[Vector2i] = []
+			while cell != start:
+				result.push_front(cell)
+				cell = previous[cell]
+			return result
+		for heading in Grid.DIRECTIONS:
+			var next := Grid.wrap(cell + heading)
+			if next in blocked or previous.has(next):
+				continue
+			previous[next] = cell
+			queue.append(next)
+	return []
 
 func _path(start: Vector2i, target: Vector2i, blocked: Array[Vector2i], maze: RefCounted = null) -> Array[Vector2i]:
 	var queue: Array[Vector2i] = [start]

@@ -18,7 +18,7 @@ func _run() -> void:
 		"version": ProjectSettings.get_setting("application/config/version") == "0.2"
 	}
 	game.start_run()
-	results["snake_ready"] = game.stage.body.size() == 1 and game.lives == 3
+	results["snake_ready"] = game.stage.body.size() == 1 and game.lives == 5
 	print(JSON.stringify(results, "  "))
 	var passed := true
 	for result: bool in results.values():

@@ -1,6 +1,7 @@
 extends "res://tests/autopilot/probe_base.gd"
 
 const Maze = preload("res://scripts/maze_stage.gd")
+const SnakeStage = preload("res://scripts/snake_stage.gd")
 
 func _ready() -> void:
 	await super._ready()
@@ -13,7 +14,7 @@ func _ready() -> void:
 		var valid: bool = game.current_stage == "maze" and game.playtest.last_error.is_empty()
 		if valid:
 			valid = game.stage.walls.size() == 4 and game.stage.reachable_cells(game.stage.body[0]).size() == 248
-			valid = valid and game.stage.walkable(game.stage.ghost) and game.score == 50
+			valid = valid and game.stage.walkable(game.stage.ghost) and game.score == SnakeStage.APPLE_TARGET * 10
 			for cell: Vector2i in game.stage.body:
 				valid = valid and game.stage.walkable(cell)
 		report("seed_%d_valid_maze" % seed_value, valid)

@@ -24,8 +24,14 @@ func _draw() -> void:
 		_draw_maze()
 		return
 	var snake: RefCounted = stage
-	draw_rect(Grid.rect(snake.obstacle).grow(-1), Art.DARK)
-	draw_rect(Grid.rect(snake.obstacle).grow(-4), Art.INK)
+	for wall: Vector2i in snake.walls:
+		var wall_tile := Grid.rect(wall).grow(-1)
+		draw_rect(wall_tile, Art.DARK)
+		draw_rect(wall_tile.grow(-3), Art.LIGHT, false, 1)
+	for spider: Vector2i in snake.spiders:
+		Art.bitmap(self, Art.SPIDER, Grid.rect(spider).position + Vector2(3, 3), 1, Art.INK)
+	if snake.mushroom.x >= 0:
+		Art.bitmap(self, Art.MUSHROOM, Grid.rect(snake.mushroom).position + Vector2(3, 3), 1, Art.INK)
 	Art.bitmap(self, Art.APPLE, Grid.rect(snake.apple).position + Vector2(3, 3), 1, Art.INK)
 	for index in range(snake.body.size() - 1, -1, -1):
 		if snake.body.size() == 1 and fmod(clock, 0.8) > 0.5:
@@ -64,7 +70,7 @@ func _draw_shift() -> void:
 	for pellet: Vector2i in shift_target.pellets:
 		var pellet_position := Grid.rect(pellet).get_center() - Vector2.ONE * 2
 		draw_rect(Rect2(apple_position.lerp(pellet_position, scatter).round(), Vector2.ONE * 4), Art.DARK)
-	var obstacle_rect := Grid.rect(shift_source.obstacle).grow(-1)
+	var obstacle_rect := Grid.rect(shift_source.ghost_seed).grow(-1)
 	var awakening := smoothstep(0.35, 0.85, shift_progress)
 	var shell := obstacle_rect.grow(-2 * awakening)
 	draw_rect(Rect2(shell.position.round(), shell.size.round()), Art.DARK)

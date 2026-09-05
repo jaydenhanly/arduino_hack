@@ -2,6 +2,7 @@ extends "res://tests/autopilot/probe_base.gd"
 
 const Grid = preload("res://scripts/grid.gd")
 const Maze = preload("res://scripts/maze_stage.gd")
+const SnakeStage = preload("res://scripts/snake_stage.gd")
 
 var game: Node
 var failures: Array[String] = []
@@ -22,29 +23,30 @@ func _ready() -> void:
 	save_frame("02_pixel")
 	var steps := 0
 	var apples_seen := 0
-	while game.state == game.State.PLAYING and steps < 220:
+	while game.state == game.State.PLAYING and steps < 1500:
 		var snake: RefCounted = game.stage
 		var blocked: Array[Vector2i] = snake.body.slice(1)
-		blocked.append(snake.obstacle)
+		blocked.append_array(snake.walls)
+		blocked.append_array(snake.spiders)
 		if snake.direction != Vector2i.ZERO:
 			blocked.append(snake.body[0] - snake.direction)
 		var route := path_to(snake.body[0], snake.apple, blocked)
 		if route.is_empty():
 			break
-		await move_one(route[0] - snake.body[0])
+		await move_one(_heading_to(snake.body[0], route[0]))
 		steps += 1
 		if game.stage.apples > apples_seen:
 			apples_seen = game.stage.apples
 			check("apple_%d_scored" % apples_seen, game.score == apples_seen * 10)
-			check("apple_%d_transition_gate" % apples_seen, game.state == (game.State.SHIFTING if apples_seen == 5 else game.State.PLAYING))
-	check("normal_five_apple_transition", game.state == game.State.SHIFTING and apples_seen == 5)
+			check("apple_%d_transition_gate" % apples_seen, game.state == (game.State.SHIFTING if apples_seen == SnakeStage.APPLE_TARGET else game.State.PLAYING))
+	check("normal_apple_target_transition", game.state == game.State.SHIFTING and apples_seen == SnakeStage.APPLE_TARGET)
 	report("normal_snake_steps", steps)
 	if game.state != game.State.SHIFTING:
 		report("error", ", ".join(failures))
 		finish()
 		return
 	var original_body: Array = game.stage.body.duplicate()
-	var original_obstacle: Vector2i = game.stage.obstacle
+	var original_ghost_seed: Vector2i = game.stage.ghost_seed
 	var original_apple: Vector2i = game.stage.apple
 	await settle()
 	save_frame("03_shift_start")
@@ -62,10 +64,10 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	check("maze_entered", game.current_stage == "maze" and game.state == game.State.PLAYING)
 	check("head_and_three_tail_cells_retained", game.stage.body == original_body.slice(0, 4))
-	check("obstacle_becomes_ghost", game.stage.ghost == original_obstacle)
-	check("fifth_apple_is_scatter_source", game.board.shift_source.apple == original_apple)
-	check("every_extra_segment_becomes_wall", game.stage.walls.size() == original_body.size() - 4)
-	check("score_lives_continue", game.score == 50 and game.lives == 3)
+	check("ghost_seed_becomes_ghost", game.stage.ghost == original_ghost_seed)
+	check("final_apple_is_scatter_source", game.board.shift_source.apple == original_apple)
+	check("shift_wall_count_fixed", game.stage.walls.size() == Maze.WALL_COUNT)
+	check("score_lives_continue", game.score == SnakeStage.APPLE_TARGET * 10 and game.lives == 5)
 	check("maze_waits_for_direction", not game.stage.started)
 	check("floor_connected", game.stage.reachable_cells(game.stage.body[0]).size() == 288 - game.stage.walls.size() * 10)
 	await settle()
@@ -75,7 +77,7 @@ func _ready() -> void:
 	await settle()
 	save_frame("06_normal_result")
 	await press("confirm", 20)
-	check("victory_full_replay", won and game.current_stage == "snake" and game.score == 0 and game.lives == 3)
+	check("victory_full_replay", won and game.current_stage == "snake" and game.score == 0 and game.lives == 5)
 	_test_maze_rules()
 	await _test_checkpoints()
 	await press("cancel", 20)
@@ -99,7 +101,7 @@ func move_one(heading: Vector2i) -> void:
 			return
 		await get_tree().process_frame
 
-func path_to(start: Vector2i, target: Vector2i, blocked: Array[Vector2i], maze: RefCounted = null) -> Array[Vector2i]:
+func path_to(start: Vector2i, target: Vector2i, blocked: Array[Vector2i]) -> Array[Vector2i]:
 	var queue: Array[Vector2i] = [start]
 	var previous := {start: start}
 	var cursor := 0
@@ -113,14 +115,18 @@ func path_to(start: Vector2i, target: Vector2i, blocked: Array[Vector2i], maze: 
 				cell = previous[cell]
 			return result
 		for heading in Grid.DIRECTIONS:
-			var next := cell + heading
-			if not Grid.inside(next) or next in blocked or previous.has(next):
-				continue
-			if maze != null and not maze.walkable(next):
+			var next := Grid.wrap(cell + heading)
+			if next in blocked or previous.has(next):
 				continue
 			previous[next] = cell
 			queue.append(next)
 	return []
+
+func _heading_to(from: Vector2i, to: Vector2i) -> Vector2i:
+	for heading in Grid.DIRECTIONS:
+		if Grid.wrap(from + heading) == to:
+			return heading
+	return Vector2i.ZERO
 
 func hunt_ghost() -> bool:
 	for step_index in 180:
@@ -165,7 +171,7 @@ func canonical_source() -> Dictionary:
 	var cells: Array[Vector2i] = []
 	for column in range(11, 3, -1):
 		cells.append(Vector2i(column, 6))
-	return {"body": cells, "direction": Vector2i.RIGHT, "apple": Vector2i(11, 6), "obstacle": Vector2i(17, 5)}
+	return {"body": cells, "direction": Vector2i.RIGHT, "apple": Vector2i(11, 6), "ghost_seed": Vector2i(17, 5)}
 
 func _test_maze_rules() -> void:
 	game.maze_entry = canonical_source()
@@ -184,7 +190,7 @@ func _test_maze_rules() -> void:
 	maze.direction = Vector2i.LEFT
 	maze.steer(Vector2i.LEFT)
 	maze.step()
-	check("maze_wall_stops_without_damage", game.lives == 3 and maze.body[0] == Vector2i.ZERO)
+	check("maze_wall_stops_without_damage", game.lives == 5 and maze.body[0] == Vector2i.ZERO)
 	maze.pellets.assign([Vector2i(1, 0)])
 	maze.steer(Vector2i.RIGHT)
 	var score_before: int = game.score
@@ -193,13 +199,13 @@ func _test_maze_rules() -> void:
 	maze.body.assign([Vector2i(16, 5), Vector2i(15, 5), Vector2i(14, 5), Vector2i(13, 5)])
 	maze.steer(Vector2i.RIGHT)
 	maze.step()
-	check("player_head_hits_ghost", game.lives == 2 and game.state == game.State.LIFE_LOST)
+	check("player_head_hits_ghost", game.lives == 4 and game.state == game.State.LIFE_LOST)
 	score_before = game.score
 	game.restart_stage()
-	check("maze_restart_valid", game.current_stage == "maze" and game.lives == 2 and game.score == score_before and game.stage.body == game.maze_entry.body.slice(0, 4) and game.stage.collected == 0)
+	check("maze_restart_valid", game.current_stage == "maze" and game.lives == 4 and game.score == score_before and game.stage.body == game.maze_entry.body.slice(0, 4) and game.stage.collected == 0)
 	game.stage.body.assign([Vector2i(16, 5), Vector2i(15, 5), Vector2i(14, 5), Vector2i(13, 5)])
 	game.stage.step_ghost()
-	check("ghost_hits_head", game.lives == 1 and game.state == game.State.LIFE_LOST)
+	check("ghost_hits_head", game.lives == 3 and game.state == game.State.LIFE_LOST)
 	game.restart_stage()
 	game.stage.body.assign([Vector2i(20, 5), Vector2i(19, 5), Vector2i(18, 5), Vector2i(18, 6)])
 	score_before = game.score
@@ -212,9 +218,10 @@ func _test_checkpoints() -> void:
 			game.playtest.select_stage(stage_name, preset)
 			check("checkpoint_%s_%s" % [stage_name, preset], game.current_stage == stage_name and game.state == game.State.PLAYING and game.playtest.last_error.is_empty())
 			if stage_name == "snake":
-				check("snake_preset_%s_count" % preset, game.stage.apples == (0 if preset == "start" else (2 if preset == "midpoint" else 4)))
+				var expected := 0 if preset == "start" else (SnakeStage.APPLE_TARGET / 2 if preset == "midpoint" else SnakeStage.APPLE_TARGET - 1)
+				check("snake_preset_%s_count" % preset, game.stage.apples == expected)
 			else:
-				check("maze_preset_%s_valid" % preset, game.stage.body.size() == 4 and game.stage.walkable(game.stage.body[0]) and game.score >= 50)
+				check("maze_preset_%s_valid" % preset, game.stage.body.size() == 4 and game.stage.walkable(game.stage.body[0]) and game.score >= SnakeStage.APPLE_TARGET * 10)
 	game.playtest.select_stage("maze", "near-completion")
 	await settle()
 	save_frame("07_tail_trap_checkpoint")
