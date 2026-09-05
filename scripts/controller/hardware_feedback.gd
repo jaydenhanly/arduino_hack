@@ -2,8 +2,10 @@ extends Node
 ## Coordinates the Uno Q kit's two feedback channels behind the single
 ## `emit_feedback(kind)` call every gameplay event uses: a vibration pulse
 ## (VibrationController) and a 13x8 blue LED-matrix frame (LightController).
-## See README's "Uno Q and hardware feedback": neither channel reaches real
-## hardware yet, only this desktop-verifiable mock.
+## `transport` (wired by game_flow.gd to VibrationTransport.send) is the only
+## piece that reaches real hardware, and only for vibration — see README's
+## "Uno Q and hardware feedback": there is still no game-facing matrix RPC, so
+## the LED-matrix frame stays desktop-verifiable only.
 
 signal feedback_requested(event: Dictionary)
 
@@ -14,7 +16,7 @@ var last_event: Dictionary = {}
 var recent_events: Array[Dictionary] = []
 var transport: Callable
 var enabled := true
-var capability_status := "desktop_mock: kit has no game-to-matrix transport"
+var capability_status := "vibration reaches the board via transport; matrix stays desktop_mock (kit has no game-to-matrix transport)"
 
 var _vibration := VibrationController.new()
 var _light := LightController.new()

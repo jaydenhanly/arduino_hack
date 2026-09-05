@@ -166,25 +166,29 @@ so `game_flow.gd` only ever calls a small, hardware-agnostic API:
   `checkpoint`).
 - `light_controller.gd` builds the blue 13x8 LED-matrix frame for the same
   cues, plus `comment`, clamping the bottom progress row to [0, 1].
-- `light_sensor.gd` reads the board's ambient light reading and dims
-  `presentation_director.gd`'s stage palettes to match the room — the input
-  counterpart to `light_controller.gd`'s output matrix. A Modulino Light
-  module feeds ambient lux into it; it reads `/game/light_state.json`,
-  written by the board's bridge, and fades a `dark_level` toward the sensor's
-  reading over half a second. `presentation_director.gd`'s `palette(stage)`
-  lerps that stage's four colors toward black by up to 60% of `dark_level`
-  (never fully black, so ink and background stay distinguishable). Off the
-  board that state file never appears, so a desktop run always stays at full
-  brightness.
 - `hardware_feedback.gd` is the single node `game_flow.gd` calls
   (`emit_feedback(kind, progress)`, `advance(delta)`); it just coordinates the
   vibration and light controllers above and keeps their combined event
   history (`last_event`, `recent_events`, `feedback_requested`).
+- `vibration_transport.gd` is `hardware_feedback.gd`'s `transport` Callable —
+  the only piece that reaches real hardware. It POSTs `{"ms": pulse_ms}` to
+  `/api/vibrate` on the board's bridge, an endpoint the board's install step
+  patches in specifically for this game (see
+  `~/summer-uno-q/board/install-game.sh`) so its own objective events drive
+  the buzz instead of the bridge's generic per-keypress click. Which loopback
+  address actually reaches that separate, persistent bridge container from
+  inside this game's own App Lab container isn't settled by anything in this
+  repo, so it fires at both `127.0.0.1` and `172.17.0.1` (the bridge's own HID
+  injector reaches the host via the latter, its Docker bridge gateway) —
+  whichever is unreachable fails silently. Failures log to
+  `vibrate-debug.log` next to the game directory (host-visible) so a mismatch
+  is diagnosable on the board.
 
-Its desktop mock is tested — see `tests/hardware/` below. The supplied kit
-exposes an internal vibration RPC but no game-facing output API or matrix
-RPC. **Physical feedback is not connected.** No board scripts are modified to
-work around that boundary. Gameplay remains readable without the adapter.
+The vibration pulse reaches real hardware through the transport above; the
+LED matrix does not — its desktop mock is tested (see `tests/hardware/`
+below) but the supplied kit exposes no game-facing matrix RPC. No board
+scripts are modified to work around that boundary. Gameplay remains readable
+without either adapter.
 
 Physical deployment must follow `/Users/j/summer-uno-q/SKILL.md` and its `board/`
 scripts exactly. The app name and icon must be confirmed for each deployment.
@@ -197,8 +201,7 @@ bash tests/hardware/run.sh
 ```
 
 Runs one headless, logic-only probe per hardware component — joystick,
-buttons, vibration, light (matrix output), light sensor (ambient input) —
-under `tests/hardware/`. No board or rendering is required; each probe drives
+buttons, vibration, light (matrix output) — under `tests/hardware/`. No board or rendering is required; each probe drives
 its `scripts/controller/` module directly with synthetic input events and cue
 calls, and the runner fails on a nonzero exit, a missing completion marker,
 or a script/parse error in the log. Run this before every physical deploy, in
@@ -216,7 +219,7 @@ regression before it reaches the board.
 - `pixel_panel.gd`: avatar expressions, stable panel and conversation layout.
 - `ai/`: trusted journal, commentary prompt/history, authored fallbacks, validation, adapter and controller.
 - `llm/llm_service.gd`: reusable local inference process and HTTP client.
-- `controller/`: joystick, buttons, vibration, light, and the light sensor —
+- `controller/`: joystick, buttons, vibration, and light —
   see "Uno Q and hardware feedback" above.
 - `retro_audio.gd`: local sound cues.
 

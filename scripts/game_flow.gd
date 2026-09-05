@@ -16,7 +16,7 @@ const PixelPanel = preload("res://scripts/pixel_panel.gd")
 const Hardware = preload("res://scripts/controller/hardware_feedback.gd")
 const JoystickInput = preload("res://scripts/controller/joystick_input.gd")
 const ButtonInput = preload("res://scripts/controller/button_input.gd")
-const LightSensor = preload("res://scripts/controller/light_sensor.gd")
+const VibrationTransport = preload("res://scripts/controller/vibration_transport.gd")
 const SHIFT_SECONDS := Pacing.TRANSITION_SECONDS
 
 enum State { TITLE, PLAYING, SHIFTING, PAUSED, LIFE_LOST, GAME_OVER, VICTORY, EVOLVED, CONVERSATION }
@@ -41,7 +41,6 @@ var audio: Node
 var pixel: Node
 var pixel_panel: Node2D
 var hardware: Node
-var light_sensor: Node
 var transition := Transition.new()
 var profile := "normal"
 var seed_override := -1
@@ -74,8 +73,9 @@ func _ready() -> void:
 	add_child(audio)
 	hardware = Hardware.new()
 	add_child(hardware)
-	light_sensor = LightSensor.new()
-	add_child(light_sensor)
+	var vibration_transport := VibrationTransport.new()
+	add_child(vibration_transport)
+	hardware.transport = vibration_transport.send
 	pixel = Pixel.new()
 	pixel.model_enabled = model_enabled
 	add_child(pixel)

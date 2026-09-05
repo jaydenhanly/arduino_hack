@@ -19,7 +19,7 @@ func _run() -> void:
 		"title_on_launch": game.state == game.State.TITLE,
 		"version": ProjectSettings.get_setting("application/config/version") == "0.2.1"
 	}
-	for script_path in ["snake_stage", "maze_stage", "frogger_stage", "asteroids_stage", "pacing_config", "run_rng", "transition_director", "presentation_director", "pixel_panel", "controller/hardware_feedback", "controller/vibration_controller", "controller/light_controller", "controller/joystick_input", "controller/button_input", "controller/light_sensor", "ai/pixel_controller", "ai/run_journal", "ai/pixel_reply", "ai/pixel_fallbacks", "ai/gemma_adapter", "llm/llm_service"]:
+	for script_path in ["snake_stage", "maze_stage", "frogger_stage", "asteroids_stage", "pacing_config", "run_rng", "transition_director", "presentation_director", "pixel_panel", "controller/hardware_feedback", "controller/vibration_controller", "controller/light_controller", "controller/joystick_input", "controller/button_input", "ai/pixel_controller", "ai/run_journal", "ai/pixel_reply", "ai/pixel_fallbacks", "ai/gemma_adapter", "llm/llm_service"]:
 		results["included_" + script_path] = ResourceLoader.exists("res://scripts/" + script_path + ".gd")
 	game.start_run()
 	results["snake_ready"] = game.stage.body.size() == 1 and game.lives == 1 and not game.stage.invulnerable
