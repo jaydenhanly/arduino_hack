@@ -2,7 +2,7 @@ extends SceneTree
 
 const Pacing = preload("res://scripts/pacing_config.gd")
 const RunRng = preload("res://scripts/run_rng.gd")
-const Hardware = preload("res://scripts/hardware_feedback.gd")
+const Hardware = preload("res://scripts/controller/hardware_feedback.gd")
 const Grid = preload("res://scripts/grid.gd")
 
 var checks := 0
@@ -72,6 +72,7 @@ func _run() -> void:
 		check(profile + " near-completion checkpoint before final apple", game.near_checkpoint_sent)
 		game.playtest.complete_objective()
 		check(profile + " real completion begins transition", game.state == game.State.SHIFTING)
+		check(profile + " transform vibrates (not swallowed by the checkpoint cue)", game.hardware.last_event.pulse_ms == 45)
 		game.previous_state = game.state
 		game.state = game.State.PAUSED
 		game._process(2.0)
@@ -86,6 +87,11 @@ func _run() -> void:
 	game._mark_run_started()
 	game._on_life_lost("TEST COLLISION")
 	check("fatal hit ends run", game.state == game.State.GAME_OVER and game.lives == 0)
+	check("death vibrates (not swallowed by the checkpoint cue)", game.hardware.last_event.pulse_ms == 70)
+	game.playtest.load_preset("asteroids", "near-completion")
+	game.playtest.complete_objective()
+	check("final stage completion reaches victory", game.state == game.State.EVOLVED)
+	check("victory vibrates (not swallowed by the checkpoint cue)", game.hardware.last_event.pulse_ms == 60)
 	game.start_run(77)
 	check("same seed replay gets new run identity", game.run_id != first_run)
 	check("replay resets score and one life", game.score == 0 and game.lives == 1)

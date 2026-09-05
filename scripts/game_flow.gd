@@ -1,6 +1,5 @@
 extends Node2D
 
-const Grid = preload("res://scripts/grid.gd")
 const Art = preload("res://scripts/pixel_art.gd")
 const SnakeStage = preload("res://scripts/snake_stage.gd")
 const MazeStage = preload("res://scripts/maze_stage.gd")
@@ -14,7 +13,10 @@ const Transition = preload("res://scripts/transition_director.gd")
 const Presentation = preload("res://scripts/presentation_director.gd")
 const Pixel = preload("res://scripts/ai/pixel_controller.gd")
 const PixelPanel = preload("res://scripts/pixel_panel.gd")
-const Hardware = preload("res://scripts/hardware_feedback.gd")
+const Hardware = preload("res://scripts/controller/hardware_feedback.gd")
+const JoystickInput = preload("res://scripts/controller/joystick_input.gd")
+const ButtonInput = preload("res://scripts/controller/button_input.gd")
+const LightSensor = preload("res://scripts/controller/light_sensor.gd")
 const SHIFT_SECONDS := Pacing.TRANSITION_SECONDS
 
 enum State { TITLE, PLAYING, SHIFTING, PAUSED, LIFE_LOST, GAME_OVER, VICTORY, EVOLVED, CONVERSATION }
@@ -39,6 +41,7 @@ var audio: Node
 var pixel: Node
 var pixel_panel: Node2D
 var hardware: Node
+var light_sensor: Node
 var transition := Transition.new()
 var profile := "normal"
 var seed_override := -1
@@ -54,7 +57,8 @@ var last_menu_move := -1.0
 func _ready() -> void:
 	Engine.max_fps = 60
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	Grid.install_inputs()
+	JoystickInput.install()
+	ButtonInput.install()
 	for argument in OS.get_cmdline_user_args():
 		if argument == "--demo":
 			profile = "demo"
@@ -70,6 +74,8 @@ func _ready() -> void:
 	add_child(audio)
 	hardware = Hardware.new()
 	add_child(hardware)
+	light_sensor = LightSensor.new()
+	add_child(light_sensor)
 	pixel = Pixel.new()
 	pixel.model_enabled = model_enabled
 	add_child(pixel)
@@ -116,7 +122,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_mark_run_started()
 			stage.set_controls(Vector2.ZERO, true)
 		else:
-			var heading := Grid.direction_for(event)
+			var heading := JoystickInput.direction_for(event)
 			if heading != Vector2i.ZERO:
 				_mark_run_started()
 				stage.steer(heading)
@@ -132,7 +138,7 @@ func _handle_conversation_input(event: InputEvent) -> void:
 		pixel_panel.selected = 0
 		audio.play("pellet")
 	elif not pixel.choices.is_empty():
-		var heading := Grid.direction_for(event)
+		var heading := JoystickInput.direction_for(event)
 		if heading != Vector2i.ZERO and clock - last_menu_move >= 0.15:
 			var movement := -1 if heading.y < 0 or heading.x < 0 else 1
 			pixel_panel.selected = posmod(pixel_panel.selected + movement, pixel.choices.size())
@@ -147,10 +153,10 @@ func _process(delta: float) -> void:
 		hardware.advance(delta)
 		if state == State.PLAYING:
 			if current_stage == "asteroids" and stage.started:
-				var axis := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+				var axis := JoystickInput.vector()
 				stage.set_controls(axis, Input.is_action_pressed("shoot"))
 			elif current_stage == "frogger" and stage.started:
-				var axis := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+				var axis := JoystickInput.vector()
 				if axis.length() > 0.5:
 					stage.steer(Vector2i(signf(axis.x), 0) if absf(axis.x) > absf(axis.y) else Vector2i(0, signf(axis.y)))
 			if run_started:
@@ -312,7 +318,11 @@ func _observe(kind: String, tags: Dictionary = {}) -> void:
 
 func _checkpoint(kind: String) -> void:
 	pixel.checkpoint(current_stage, kind, stage.get_progress(), stage.target, score)
-	hardware.emit_feedback("checkpoint")
+	# death/victory/transformation_started each fire their own specific cue right
+	# after this call; the generic checkpoint pulse would otherwise land in the
+	# same instant and rate-limit that more important cue's vibration to 0ms.
+	if kind not in ["death", "victory", "transformation_started"]:
+		hardware.emit_feedback("checkpoint")
 
 func _on_pixel_changed() -> void:
 	if pixel_panel != null:

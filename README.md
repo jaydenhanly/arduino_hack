@@ -152,15 +152,58 @@ The bundle is `build/game-linux-arm64.zip`. Model weights and native libraries
 live beside the executable under `llm/`, outside the PCK. Exporting a ZIP is not
 proof that it runs on the board.
 
-`HardwareFeedback` emits rate-limited light-pulse requests and blue 13x8 matrix
-frames through an optional transport. Its desktop mock is tested. The supplied
-kit exposes an internal vibration RPC but no game-facing output API or matrix
+`scripts/controller/` isolates every Uno Q hardware concern from gameplay code,
+so `game_flow.gd` only ever calls a small, hardware-agnostic API:
+
+- `joystick_input.gd` registers the four movement actions (keyboard, D-pad,
+  analog stick) and resolves them to a direction (`direction_for`, for
+  discrete input) or a continuous vector (`vector`, for polled movement).
+- `button_input.gd` registers the three face buttons (and their keyboard
+  equivalents) as confirm/cancel/pause/shoot. Kept separate from the joystick
+  so installing one can never leak the other's bindings.
+- `vibration_controller.gd` sizes and rate-limits the vibration-motor pulse
+  for a gameplay cue (`collect`, `danger`, `transform`, `death`, `victory`,
+  `checkpoint`).
+- `light_controller.gd` builds the blue 13x8 LED-matrix frame for the same
+  cues, plus `comment`, clamping the bottom progress row to [0, 1].
+- `light_sensor.gd` reads the board's ambient light reading and dims
+  `presentation_director.gd`'s stage palettes to match the room — the input
+  counterpart to `light_controller.gd`'s output matrix. A Modulino Light
+  module feeds ambient lux into it; it reads `/game/light_state.json`,
+  written by the board's bridge, and fades a `dark_level` toward the sensor's
+  reading over half a second. `presentation_director.gd`'s `palette(stage)`
+  lerps that stage's four colors toward black by up to 60% of `dark_level`
+  (never fully black, so ink and background stay distinguishable). Off the
+  board that state file never appears, so a desktop run always stays at full
+  brightness.
+- `hardware_feedback.gd` is the single node `game_flow.gd` calls
+  (`emit_feedback(kind, progress)`, `advance(delta)`); it just coordinates the
+  vibration and light controllers above and keeps their combined event
+  history (`last_event`, `recent_events`, `feedback_requested`).
+
+Its desktop mock is tested — see `tests/hardware/` below. The supplied kit
+exposes an internal vibration RPC but no game-facing output API or matrix
 RPC. **Physical feedback is not connected.** No board scripts are modified to
 work around that boundary. Gameplay remains readable without the adapter.
 
 Physical deployment must follow `/Users/j/summer-uno-q/SKILL.md` and its `board/`
 scripts exactly. The app name and icon must be confirmed for each deployment.
 No improvised adb, container, firmware or installer commands are appropriate.
+
+### Pre-deploy hardware validation
+
+```sh
+bash tests/hardware/run.sh
+```
+
+Runs one headless, logic-only probe per hardware component — joystick,
+buttons, vibration, light (matrix output), light sensor (ambient input) —
+under `tests/hardware/`. No board or rendering is required; each probe drives
+its `scripts/controller/` module directly with synthetic input events and cue
+calls, and the runner fails on a nonzero exit, a missing completion marker,
+or a script/parse error in the log. Run this before every physical deploy, in
+addition to `tests/roadmap/run.sh`, to catch a broken binding or feedback
+regression before it reaches the board.
 
 ## Code map
 
@@ -173,7 +216,9 @@ No improvised adb, container, firmware or installer commands are appropriate.
 - `pixel_panel.gd`: avatar expressions, stable panel and conversation layout.
 - `ai/`: trusted journal, commentary prompt/history, authored fallbacks, validation, adapter and controller.
 - `llm/llm_service.gd`: reusable local inference process and HTTP client.
-- `hardware_feedback.gd`, `retro_audio.gd`: optional outputs and local sound cues.
+- `controller/`: joystick, buttons, vibration, light, and the light sensor —
+  see "Uno Q and hardware feedback" above.
+- `retro_audio.gd`: local sound cues.
 
 All code-map paths are under `scripts/`. Sensor mechanics, AI-directed gameplay,
 side quests, hybrid stages, persistent memory and phone audio remain deferred.
