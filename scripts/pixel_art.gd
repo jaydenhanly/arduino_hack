@@ -1,9 +1,28 @@
 extends RefCounted
 
-const LIGHT := Color("9bbc0f")
-const MID := Color("8bac0f")
-const DARK := Color("306230")
-const INK := Color("0f380f")
+# Light mode: dark ink on a light green screen, matching the original GameBoy look.
+const LIGHT_THEME := {
+	"LIGHT": Color("9bbc0f"), "MID": Color("8bac0f"), "DARK": Color("306230"), "INK": Color("0f380f"),
+}
+# Dark mode: the same four shades with light/ink swapped, so it reads as light ink on a black screen.
+const DARK_THEME := {
+	"LIGHT": Color("0f380f"), "MID": Color("306230"), "DARK": Color("8bac0f"), "INK": Color("9bbc0f"),
+}
+
+static var LIGHT := LIGHT_THEME.LIGHT
+static var MID := LIGHT_THEME.MID
+static var DARK := LIGHT_THEME.DARK
+static var INK := LIGHT_THEME.INK
+
+## t=0 is full light mode, t=1 is full dark mode; anything between is a blend of the two.
+static func apply_light_level(t: float) -> void:
+	t = clampf(t, 0.0, 1.0)
+	LIGHT = LIGHT_THEME.LIGHT.lerp(DARK_THEME.LIGHT, t)
+	MID = LIGHT_THEME.MID.lerp(DARK_THEME.MID, t)
+	DARK = LIGHT_THEME.DARK.lerp(DARK_THEME.DARK, t)
+	INK = LIGHT_THEME.INK.lerp(DARK_THEME.INK, t)
+	RenderingServer.set_default_clear_color(LIGHT)
+
 const GLYPHS := {
 	"A":"01110/10001/10001/11111/10001/10001/10001", "B":"11110/10001/10001/11110/10001/10001/11110",
 	"C":"01111/10000/10000/10000/10000/10000/01111", "D":"11110/10001/10001/10001/10001/10001/11110",
@@ -34,14 +53,22 @@ const GHOST := ["00111100", "01111110", "11111111", "11011011", "10010011", "111
 const SPIDER := ["01000010", "10100101", "01111110", "11111111", "11111111", "01111110", "10100101", "01000010"]
 const MUSHROOM := ["00111100", "01111110", "11111111", "11111111", "00011000", "00011000", "00011000", "00111100"]
 
-static func text(canvas: CanvasItem, value: String, origin: Vector2, scale_value: int = 1, color: Color = INK) -> void:
+# Default params must be constant, but INK now changes with the theme — this sentinel
+# (an alpha no real color has) means "use whatever INK currently is" at call time.
+const _DEFAULT_INK := Color(-1.0, -1.0, -1.0, -1.0)
+
+static func text(canvas: CanvasItem, value: String, origin: Vector2, scale_value: int = 1, color: Color = _DEFAULT_INK) -> void:
+	if color == _DEFAULT_INK:
+		color = INK
 	var cursor := origin.round()
 	for letter in value.to_upper():
 		if GLYPHS.has(letter):
 			bitmap(canvas, GLYPHS[letter].split("/"), cursor, scale_value, color)
 		cursor.x += 6 * scale_value
 
-static func centered(canvas: CanvasItem, value: String, top: float, scale_value: int = 1, color: Color = INK) -> void:
+static func centered(canvas: CanvasItem, value: String, top: float, scale_value: int = 1, color: Color = _DEFAULT_INK) -> void:
+	if color == _DEFAULT_INK:
+		color = INK
 	text(canvas, value, Vector2((400 - (value.length() * 6 - 1) * scale_value) / 2.0, top), scale_value, color)
 
 static func bitmap(canvas: CanvasItem, rows: Variant, origin: Vector2, scale_value: int, color: Color) -> void:

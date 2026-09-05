@@ -96,9 +96,14 @@ Automated probes drive actual input for the full game, then use explicit fixture
 - `scripts/grid.gd` defines board geometry and input bindings.
 - `scripts/pixel_art.gd` contains the palette, bitmap type, and tiny sprites.
 - `scripts/retro_audio.gd` creates and plays short local PCM sound cues.
+- `scripts/light_sensor.gd` reads the board's ambient light reading and fades the palette to match.
 - `scripts/dev/playtest_manager.gd` owns development-only checkpoints.
 
-Frogger, Asteroids, sensor mechanics, LLM-driven gameplay, networking, persistence, and additional cartridges remain deferred.
+Frogger, Asteroids, LLM-driven gameplay, networking, persistence, and additional cartridges remain deferred.
+
+## Light sensor theme
+
+On the Uno Q, a Modulino Light module feeds ambient lux into `scripts/light_sensor.gd` (an autoload), which fades `scripts/pixel_art.gd`'s palette between light mode (dark ink on green) and dark mode (green ink on black) — see `PixelArt.apply_light_level()`. It reads `/game/light_state.json`, written by the board's bridge; that file only exists on the board, so a desktop run always stays in light mode.
 
 ## Bundled local LLM
 
