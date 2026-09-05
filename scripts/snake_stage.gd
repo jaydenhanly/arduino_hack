@@ -4,6 +4,7 @@ signal points_earned(amount: int)
 signal life_lost(reason: String)
 signal objective_completed
 signal boost_triggered
+signal tail_severed(segments: int)
 
 const Grid = preload("res://scripts/grid.gd")
 const BASE_STEP_SECONDS := 0.15
@@ -98,20 +99,27 @@ func step() -> void:
 	var grows := next == apple
 	var solid_body := body.slice(0, body.size() if grows else body.size() - 1)
 	var reason := ""
-	var bitten := 0
 	if next in walls:
 		reason = "WALL HIT"
 	elif next in spiders:
 		reason = "SPIDER BIT YOU"
-	elif next in solid_body:
-		reason = "TAIL HIT"
-		bitten = body.size() - body.find(next)
 	if not reason.is_empty():
 		if not invulnerable:
 			stopped = true
-			if bitten > 0:
-				points_earned.emit(-bitten * APPLE_POINTS)
 			life_lost.emit(reason)
+		return
+	# Biting yourself severs the tail instead of ending the run: everything from
+	# the bitten segment back is lost, and each lost segment costs an apple.
+	var bite_index := solid_body.find(next)
+	if bite_index >= 0:
+		if invulnerable:
+			return
+		var severed := body.size() - bite_index
+		body = body.slice(0, bite_index)
+		points_earned.emit(-severed * APPLE_POINTS)
+		tail_severed.emit(severed)
+		body.push_front(next)
+		_advance_spiders()
 		return
 	body.push_front(next)
 	if next == mushroom:

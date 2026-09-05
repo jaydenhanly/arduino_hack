@@ -3,6 +3,7 @@ extends RefCounted
 signal points_earned(amount: int)
 signal life_lost(reason: String)
 signal objective_completed
+signal tail_severed(segments: int)
 
 const Grid = preload("res://scripts/grid.gd")
 const SIZE := Vector2i(48, 24)
@@ -33,6 +34,7 @@ const LOOKAHEAD := 4
 const BANNER_SECONDS := 2.5
 const KO_POINTS := 50
 const SURVIVAL_POINTS := 200
+const FOOD_POINTS := 5
 
 class Bot extends RefCounted:
 	var body: Array[Vector2i] = []
@@ -295,12 +297,23 @@ func step() -> void:
 		reason = "WALL HIT"
 	elif next in spiders:
 		reason = "SPIDER BIT YOU"
-	elif next in body.slice(0, body.size() if growth > 0 else body.size() - 1):
-		reason = "TAIL HIT"
 	elif _bot_body_at(next) != null:
 		reason = "BITTEN BY A SNAKE"
 	if not reason.is_empty():
 		_damage(reason)
+		return
+	# Same rule as the snake stage: biting yourself cuts the tail off and costs
+	# points, it does not end the run.
+	var bite_index := body.slice(0, body.size() if growth > 0 else body.size() - 1).find(next)
+	if bite_index >= 0:
+		if invulnerable:
+			return
+		var severed := body.size() - bite_index
+		body = body.slice(0, bite_index)
+		growth = 0
+		points_earned.emit(-severed * FOOD_POINTS)
+		tail_severed.emit(severed)
+		body.push_front(next)
 		return
 	var rammed := _bot_at(next)
 	if rammed != null:
@@ -315,7 +328,7 @@ func step() -> void:
 		if body.size() + growth < PLAYER_MAX_LENGTH:
 			growth += 1
 		survived += FOOD_SECONDS
-		points_earned.emit(5)
+		points_earned.emit(FOOD_POINTS)
 		_spawn_food()
 
 func step_bot(bot: Bot) -> void:

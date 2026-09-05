@@ -140,8 +140,13 @@ func _connect_stage() -> void:
 	stage.points_earned.connect(_on_points)
 	stage.life_lost.connect(_on_life_lost)
 	stage.objective_completed.connect(_on_objective_completed)
+	if current_stage != "maze":
+		stage.tail_severed.connect(_on_tail_severed)
 	if current_stage == "snake":
 		stage.boost_triggered.connect(_on_boost)
+
+func _on_tail_severed(_segments: int) -> void:
+	audio.play("damage")
 
 func _on_boost() -> void:
 	audio.play("boost")
