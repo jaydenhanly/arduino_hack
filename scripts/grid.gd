@@ -1,8 +1,8 @@
 extends RefCounted
 
 const SIZE := Vector2i(24, 12)
-const CELL := 14
-const ORIGIN := Vector2(32, 40)
+const CELL := 12
+const ORIGIN := Vector2(56, 36)
 const DIRECTIONS: Array[Vector2i] = [Vector2i.UP, Vector2i.LEFT, Vector2i.DOWN, Vector2i.RIGHT]
 const ACTIONS: Array[StringName] = [&"move_up", &"move_left", &"move_down", &"move_right"]
 

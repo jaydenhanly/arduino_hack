@@ -4,6 +4,7 @@ signal points_earned(amount: int)
 signal life_lost(reason: String)
 signal objective_completed
 signal boost_triggered
+signal journal_event(kind: String, tags: Dictionary)
 
 const Grid = preload("res://scripts/grid.gd")
 const BASE_STEP_SECONDS := 0.15
@@ -38,9 +39,15 @@ var stopped := false
 var awaiting_input := true
 var invulnerable := false
 var rng := RandomNumberGenerator.new()
+var seed := 0
+var target := APPLE_TARGET
+var advanced_hazards := true
 
-func initialize(seed_value: int) -> void:
-	rng.seed = seed_value
+func initialize(seed_value: int, options: Dictionary = {}) -> void:
+	seed = int(options.get("seed", seed_value))
+	rng.seed = seed
+	target = maxi(1, int(options.get("target", APPLE_TARGET)))
+	advanced_hazards = bool(options.get("advanced_hazards", true))
 	body.assign([Vector2i(6, 6)])
 	direction = Vector2i.ZERO
 	pending_direction = Vector2i.ZERO
@@ -58,8 +65,10 @@ func initialize(seed_value: int) -> void:
 	ghost_seed = OFF_GRID
 
 func steer(next_direction: Vector2i) -> void:
-	if stopped or next_direction == Vector2i.ZERO:
+	if stopped or next_direction not in Grid.DIRECTIONS:
 		return
+	if awaiting_input:
+		journal_event.emit("started", {"direction": next_direction})
 	awaiting_input = false
 	if direction == Vector2i.ZERO:
 		direction = next_direction
@@ -71,7 +80,7 @@ func steer(next_direction: Vector2i) -> void:
 		pending_direction = next_direction
 
 func advance(delta: float) -> void:
-	if stopped or awaiting_input or direction == Vector2i.ZERO:
+	if stopped or awaiting_input or direction == Vector2i.ZERO or delta <= 0.0:
 		return
 	if boost_elapsed > 0.0:
 		boost_elapsed = maxf(0.0, boost_elapsed - delta)
@@ -106,22 +115,26 @@ func step() -> void:
 	if not reason.is_empty():
 		if not invulnerable:
 			stopped = true
+			journal_event.emit("death", {"reason": reason, "progress": apples})
 			life_lost.emit(reason)
 		return
 	body.push_front(next)
 	if next == mushroom:
 		boost_elapsed = BOOST_DURATION
 		boost_triggered.emit()
+		journal_event.emit("boost", {"duration": BOOST_DURATION})
 		spawn_mushroom()
 	if grows:
 		apples += 1
 		points_earned.emit(10)
+		journal_event.emit("collect", {"item": "apple", "progress": apples, "target": target})
 		_check_tiers()
 		if stopped:
 			return
-		if apples >= APPLE_TARGET:
+		if apples >= target:
 			stopped = true
 			ghost_seed = _pick_ghost_seed()
+			journal_event.emit("objective_completed", {"progress": apples, "target": target})
 			objective_completed.emit()
 		else:
 			spawn_apple()
@@ -130,6 +143,8 @@ func step() -> void:
 	_advance_spiders()
 
 func _check_tiers() -> void:
+	if not advanced_hazards:
+		return
 	if apples == WALL_TIER_APPLES:
 		_spawn_walls(TIER_ONE_WALLS)
 	elif apples == SPIDER_TIER_APPLES:
@@ -139,7 +154,7 @@ func _check_tiers() -> void:
 		spawn_mushroom()
 
 func _advance_spiders() -> void:
-	if spiders.is_empty() or stopped:
+	if not advanced_hazards or spiders.is_empty() or stopped:
 		return
 	spider_tick += 1
 	if spider_tick % SPIDER_STEP_TICKS != 0:
@@ -156,6 +171,7 @@ func _advance_spiders() -> void:
 		if spiders[index] == body[0]:
 			if not invulnerable:
 				stopped = true
+				journal_event.emit("death", {"reason": "SPIDER BIT YOU", "progress": apples})
 				life_lost.emit("SPIDER BIT YOU")
 			return
 
@@ -213,4 +229,16 @@ func _pick_ghost_seed() -> Vector2i:
 	return free[rng.randi_range(0, free.size() - 1)]
 
 func snapshot() -> Dictionary:
-	return {"body": body.duplicate(), "direction": direction, "apple": apple, "ghost_seed": ghost_seed}
+	return {
+		"stage": "snake", "seed": seed, "player_position": get_player_position(),
+		"body": body.duplicate(), "direction": direction, "apple": apple,
+		"ghost_seed": ghost_seed, "walls": walls.duplicate(), "spiders": spiders.duplicate(),
+		"mushroom": mushroom, "apples": apples, "progress": apples, "target": target,
+		"advanced_hazards": advanced_hazards
+	}
+
+func get_progress() -> int:
+	return apples
+
+func get_player_position() -> Vector2:
+	return Grid.rect(body[0]).get_center()

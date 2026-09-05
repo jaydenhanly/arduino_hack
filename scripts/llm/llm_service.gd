@@ -19,11 +19,13 @@ var _process_id: int = 0
 var _port: int = 0
 var _server_ready: bool = false
 var _request_in_flight: bool = false
+var _lifecycle: int = 0
 
 
-func start() -> Error:
-	if _server_ready:
+func start(timeout_msec: int = STARTUP_TIMEOUT_MSEC) -> Error:
+	if is_ready():
 		return OK
+	_server_ready = false
 	if _process_id > 0 and OS.is_process_running(_process_id):
 		return ERR_ALREADY_IN_USE
 
@@ -59,12 +61,18 @@ func start() -> Error:
 		_process_id = 0
 		return _fail(ERR_CANT_FORK, "Could not start the bundled LLM runtime")
 
-	var deadline := Time.get_ticks_msec() + STARTUP_TIMEOUT_MSEC
+	var lifecycle := _lifecycle
+	var deadline := Time.get_ticks_msec() + maxi(1, timeout_msec)
 	while Time.get_ticks_msec() < deadline:
+		if lifecycle != _lifecycle:
+			return ERR_SKIP
 		if not OS.is_process_running(_process_id):
 			_process_id = 0
 			return _fail(ERR_CANT_OPEN, "The bundled LLM runtime exited during startup")
-		var response: Dictionary = await _request(HTTPClient.METHOD_GET, "/health", "", 1_000)
+		var response: Dictionary = await _request(HTTPClient.METHOD_GET, "/health", "",
+			mini(1000, maxi(1, deadline - Time.get_ticks_msec())))
+		if lifecycle != _lifecycle:
+			return ERR_SKIP
 		if int(response.get("code", 0)) == 200:
 			_server_ready = true
 			last_error = ""
@@ -72,6 +80,8 @@ func start() -> Error:
 			return OK
 		await get_tree().create_timer(0.1).timeout
 
+	if lifecycle != _lifecycle:
+		return ERR_SKIP
 	stop()
 	return _fail(ERR_TIMEOUT, "The bundled LLM runtime did not become ready")
 
@@ -80,7 +90,7 @@ func is_ready() -> bool:
 	return _server_ready and _process_id > 0 and OS.is_process_running(_process_id)
 
 
-func generate(prompt: String, max_tokens: int = 48) -> String:
+func generate(prompt: String, max_tokens: int = 48, options: Dictionary = {}) -> String:
 	if not is_ready():
 		_fail(ERR_UNAVAILABLE, "The bundled LLM runtime is not ready")
 		return ""
@@ -92,25 +102,32 @@ func generate(prompt: String, max_tokens: int = 48) -> String:
 		return ""
 
 	_request_in_flight = true
+	var lifecycle := _lifecycle
 	var payload := {
 		"model": "retro-ai-gemma",
 		"messages": [
-			{"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+			{"role": "system", "content": options.get("system_prompt", DEFAULT_SYSTEM_PROMPT)},
 			{"role": "user", "content": prompt},
 		],
-		"max_tokens": clampi(max_tokens, 1, 128),
+		"max_tokens": clampi(max_tokens, 1, 512),
 		"temperature": 0.7,
 		"stream": false,
 	}
+	if options.has("json_schema"):
+		payload["response_format"] = {"type": "json_schema", "json_schema": {
+			"name": "pixel_reply", "strict": true, "schema": options.json_schema}}
 	var response: Dictionary = await _request(
 		HTTPClient.METHOD_POST,
 		"/v1/chat/completions",
 		JSON.stringify(payload),
-		REQUEST_TIMEOUT_MSEC
+		clampi(int(options.get("timeout_msec", REQUEST_TIMEOUT_MSEC)), 1, 120000)
 	)
+	if lifecycle != _lifecycle:
+		return ""
 	_request_in_flight = false
 
 	if int(response.get("code", 0)) != 200:
+		stop()
 		_fail(ERR_CANT_CONNECT, "LLM request failed: %s" % response.get("error", "HTTP error"))
 		return ""
 	var data: Variant = response.get("json")
@@ -120,6 +137,9 @@ func generate(prompt: String, max_tokens: int = 48) -> String:
 	var choices: Variant = data.get("choices")
 	if not choices is Array or choices.is_empty():
 		_fail(ERR_PARSE_ERROR, "LLM response did not contain a choice")
+		return ""
+	if not choices[0] is Dictionary:
+		_fail(ERR_PARSE_ERROR, "LLM choice was not an object")
 		return ""
 	var message: Variant = choices[0].get("message")
 	if not message is Dictionary:
@@ -134,6 +154,7 @@ func generate(prompt: String, max_tokens: int = 48) -> String:
 
 
 func stop() -> void:
+	_lifecycle += 1
 	_server_ready = false
 	_request_in_flight = false
 	if _process_id > 0 and OS.is_process_running(_process_id):
@@ -205,6 +226,7 @@ func _find_available_port() -> int:
 
 
 func _request(method: HTTPClient.Method, path: String, body: String, timeout_msec: int) -> Dictionary:
+	var lifecycle := _lifecycle
 	var client := HTTPClient.new()
 	var connect_error := client.connect_to_host(HOST, _port)
 	if connect_error != OK:
@@ -212,6 +234,9 @@ func _request(method: HTTPClient.Method, path: String, body: String, timeout_mse
 	var deadline := Time.get_ticks_msec() + timeout_msec
 
 	while client.get_status() in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
+		if lifecycle != _lifecycle:
+			client.close()
+			return {"error": "cancelled"}
 		client.poll()
 		if Time.get_ticks_msec() >= deadline:
 			return {"error": "connection timeout"}
@@ -224,6 +249,9 @@ func _request(method: HTTPClient.Method, path: String, body: String, timeout_mse
 	if request_error != OK:
 		return {"error": error_string(request_error)}
 	while not client.has_response():
+		if lifecycle != _lifecycle:
+			client.close()
+			return {"error": "cancelled"}
 		client.poll()
 		if Time.get_ticks_msec() >= deadline:
 			return {"error": "response timeout"}
@@ -238,16 +266,23 @@ func _request(method: HTTPClient.Method, path: String, body: String, timeout_mse
 	var response_code := client.get_response_code()
 	var response_body := PackedByteArray()
 	while client.get_status() == HTTPClient.STATUS_BODY:
+		if lifecycle != _lifecycle:
+			client.close()
+			return {"error": "cancelled"}
 		client.poll()
 		var chunk := client.read_response_body_chunk()
 		if not chunk.is_empty():
 			response_body.append_array(chunk)
+			if response_body.size() > 65536:
+				client.close()
+				return {"error": "response too large"}
 		if Time.get_ticks_msec() >= deadline:
 			return {"code": response_code, "error": "body timeout"}
 		await get_tree().process_frame
 
 	var response_text := response_body.get_string_from_utf8()
-	var parsed: Variant = JSON.parse_string(response_text)
+	var parser := JSON.new()
+	var parsed: Variant = parser.data if parser.parse(response_text) == OK else null
 	return {
 		"code": response_code,
 		"json": parsed,

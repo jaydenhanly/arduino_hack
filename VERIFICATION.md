@@ -1,6 +1,87 @@
 # Verification record
 
-Verified locally on September 5, 2026, using the installed Summer Engine 0.5.65 on macOS. Highest implemented and automatically verified version: v0.2.
+## v0.2.1 current release
+
+Verified locally on September 5, 2026 with the installed Summer Engine on macOS.
+The current acceptance entry point is `bash tests/roadmap/run.sh`. It checks
+engine logs and completion markers as well as process exit status. The default
+`tests/autopilot/run.sh` now selects the four-stage rendered probe.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Snake and Maze rules | 6,098 checks passed | `tests/roadmap/early_stage_probe.gd` |
+| Frogger and Asteroids rules | 760 checks passed | `tests/roadmap/late_stage_probe.gd` |
+| Pixel journal, fallbacks, timeout and stale-response handling | 275 checks passed | `tests/ai/unit.gd` |
+| Shared lifecycle and all 24 debug checkpoints | 175 checks passed | `tests/roadmap/coordinator_probe.gd` |
+| Four complete input-driven runs | 464 boolean checks and 77 rendered frames | `tests/roadmap/full_run_probe.gd` |
+| Layout, five emotions and all stage entries | 7 checks and 11 rendered frames | `tests/roadmap/presentation_probe.gd` |
+| Actual bundled Gemma | Three validated conversation turns, commentary, legacy API and process cleanup passed | `build/validation/v021/model-smoke.log` |
+| Rendering while the local model runs | Snake moved, fallback appeared immediately, live request completed, process stopped | `build/validation/v021/model-rendered/results.json` |
+| Release isolation | Required stage/AI modules included; tests/dev absent; one life and correct version | `tests/autopilot/release_check.gd` |
+| Current ARM64 ZIP | ZIP integrity, model SHA-256, separate PCK, ARM64 executables and runtime mode passed | `build/validation/v021/bundle-check.json` |
+
+The consolidated final run is recorded in `build/validation/v021/final-summary.log`,
+which points to its fresh `summary.json`, detailed logs and captured frames. The
+model smoke test is independent of the deterministic model-disabled acceptance
+suite. It exercised the actual locally bundled model, not a remote endpoint.
+
+The real-time rendered model probe measured 65 busy frames and a 1,101 ms request
+in its successful run. Baseline frame-time p95 was 17.625 ms; during inference,
+p95 was 17.216 ms and the maximum was 32.659 ms. These are measurements from this
+Mac, with screenshot/probe overhead, not board guarantees. Initial attempts
+exceeded the eight-second startup deadline. Their fallbacks remained visible,
+Snake kept moving, and frame-time p95 stayed around 17 ms. The underlying startup
+delay was not conclusively diagnosed; a later attempt succeeded without a
+runtime-code change. Slow startup must remain a supported fallback path.
+
+### What the complete-run probe proves
+
+Normal and Demo both traverse Snake, Maze, Frogger and Asteroids through actual
+objectives. Two additional Demo runs exercise skipping during conversation and
+during the victory payoff. Pause is checked at idle/active stages and during
+transitions. The probe also causes a real Snake self-collision and verifies replay.
+Coordinator regressions additionally prove that held input from a previous stage
+cannot auto-start Frogger/space, while fresh firing can start space without motion.
+
+Inputs are injected through the game's normal input handling. The probe calls
+GameFlow with deterministic simulation deltas between rendered frames; it does
+not modify positions, counters or collision fixtures and never enables
+invulnerability. This proves an input-driven winning route, not human pacing or
+real-time reaction difficulty. Separate coordinator/presentation probes use
+explicit development checkpoints and are not presented as normal playthroughs.
+
+### Visual review
+
+Inspected the actual rendered Maze, lane layout, active space scene and victory
+conversation. Inspected the longer-message conversation fixture and the avatar
+panel. A low-contrast first-input hint at the bottom of later stages was found
+and given an opaque backing. All five avatar expressions have saved frames.
+Screenshots are JPEG evidence from the runner; game textures are not JPEG.
+
+### Build artifacts and limits
+
+- `build/game-linux-arm64.zip` is a fresh complete game export with the existing
+  Gemma model and Linux runtime. `bundle-check.json` records its digest and size.
+- `builds/pixel-shift-v0.2.1.pck` is extracted from that exact ZIP and tested in an
+  isolated working directory, so repository source files cannot mask exclusions.
+- Physical Uno Q deployment has not run. App name/icon confirmation and an
+  approved output-bridge extension remain necessary. The supplied kit does not
+  expose game-driven matrix output. HardwareFeedback is a tested desktop mock
+  and transport contract, not verified hardware feedback.
+- Human difficulty, 60 to 90 second stage pacing, handheld legibility, physical
+  controls, haptics/LED output and Linux inference/rendering performance remain
+  unverified. No claim of complete hardware acceptance is made.
+- Gemma selects context-grounded authored replies under a constrained schema.
+  This is not unrestricted generated dialogue. See `docs/roadmap-status.md`.
+- Summer emits its known AuthManager shutdown warning. Accelerated audio probes
+  can also leave queued WAV playback objects at process teardown. These warnings
+  are separate from parser/runtime errors and must not be described as an
+  entirely warning-free run. Export also reports engine CanvasItem teardown RIDs.
+
+## Historical v0.2 record
+
+The remainder records the earlier two-stage build, not current acceptance.
+Verified locally on September 5, 2026, using Summer Engine 0.5.65 on macOS.
 
 ## Executed checks
 

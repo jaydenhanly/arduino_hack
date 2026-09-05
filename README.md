@@ -1,122 +1,168 @@
-# Pixel Shift v0.2
+# Pixel Shift v0.2.1
 
-A single game that changes its rules in front of you. Wake a pixel, grow a snake, eat 25 apples, then watch your body become a maze. The remaining tail is your weapon against one pursuing ghost.
+A single run begins as Snake and changes into a maze, a crossing game, and an
+inertial space shooter. Pixel watches the current run and offers a short,
+controller-only conversation after victory. The player-facing UI does not name
+future stages or display hidden objectives.
 
 ## Play locally
 
-From the repository root:
-
 ```sh
 bash run.sh
+bash run.sh -- --demo
+bash run.sh -- --demo --no-model --seed=2026
 ```
 
-The launcher uses the installed macOS Summer Engine. Set `SUMMER_BIN` to use another installation. You can also open `project.godot` in Summer and run its main scene.
+Summer Engine must be installed. The logical display is 400x240, rendered at
+800x480 with integer scaling. Gameplay uses the top 192 pixels; Pixel has a fixed
+48-pixel panel below it. Procedural sprites and local PCM cues need no asset
+downloads. Model assets are optional for gameplay.
 
-- Joystick or arrow keys move. In Snake, the last valid turn before a grid tick wins, and direct reversal is rejected. Maze turns remain buffered until the requested direction opens.
-- Button A starts, retries after damage, and replays after victory or game over. Enter and Space also confirm locally.
-- Button B returns to the title. Escape also works locally.
-- Button C pauses and resumes, including during the transformation. P also pauses locally.
+| Handheld control | Keyboard equivalent | Action |
+| --- | --- | --- |
+| Joystick | Arrows or WASD | Move; select a conversation response |
+| Button A | J, Enter, Space | Start, choose, replay; J fires in space |
+| Button B | K, Escape | Leave dialogue; return to title from gameplay |
+| Button C | L, P | Pause or resume gameplay and transformations |
 
-Start with five lives. Apples score 10, pellets score 5, and defeating the ghost scores 100. Damage resets the current stage's local progress but preserves your total score and remaining lives. A retry waits for movement input. Replay starts from Snake with a fresh score and five lives.
+Standard gamepad sticks/D-pad and A/B/X are also mapped. No mouse, typing,
+network, audio, haptics, or external display output is required to understand play.
 
-The ghost moves more slowly than the player and shows an outlined next cell shortly before moving. Its head contact is dangerous; lure it into one of the three tail cells. Pellets are optional points, not a victory requirement. The transformed maze waits for a fresh direction before the chase starts.
+## Run rules
 
-## Scope decisions
+- One life. A fatal collision ends the run; replay begins again at Snake.
+- Snake wraps screen edges, rejects reversal, grows and speeds up with apples.
+- Maze movement has buffered turns. The head loses to a ghost, the tail defeats
+  it. Ghosts respawn at safe, warned edge positions. Pellets, not ghost kills,
+  advance the objective.
+- Crossing lanes have seeded traffic with safe waiting rows. Each successful
+  crossing returns the player to a safe start.
+- Space movement has acceleration, inertia, a speed cap, wrapping, and shooting.
+  New rocks are telegraphed before becoming dangerous.
+- Each stage waits for the first relevant input before hazards advance.
+- Three-second blink/glitch transformations preserve selected objects and the
+  player. Score persists. Gameplay rules replace each other rather than stack.
+- Victory freezes the final scene. Pixel offers three responses per turn, for at
+  most three player selections, then a farewell and replay. Button B skips.
 
-The reference is `../workspaces/ai-game-console-hackathon/game-v0.2.md`. This implementation keeps its two-stage loop, with these concrete interpretations:
+| Internal stage | Normal target | Demo target |
+| --- | ---: | ---: |
+| Snake apples | 10 | 3 |
+| Maze pellets | 30 | 10 |
+| Crossings | 3 | 1 |
+| Asteroid destructions | 12 | 4 |
 
-- The 25th apple scatters into pellets. Previously eaten apples no longer exist.
-- The head and first three body cells stay in place. The remaining four segments slide and stretch into wall blocks. Walls avoid the retained player and ghost, and the walkable floor remains connected.
-- Transformation lasts 2.4 seconds. It uses the same board and world coordinates, without a fade or scene cut. Movement is frozen during it, but pause and return to title still work.
-- Maze retries reconstruct the entry state captured from that run's Snake completion, rather than loading an unrelated canned maze.
-- A small original bitmap alphabet replaces the font attachment, which was not present locally. All art and square-wave sound effects are generated locally. There are no runtime downloads or external dependencies beyond Summer.
-- The normal seed is 2026. Replay is deliberately repeatable.
+Targets and transition timing live in `scripts/pacing_config.gd`. These are the
+roadmap's starting targets, not a claim of human-tested 60 to 90 second balance.
+Normal replay picks a fresh seed. `--seed=N` makes runs repeatable. Stage and
+companion RNG streams are separate so commentary cannot change gameplay.
 
-The logical image is 400x240, presented at exactly 800x480 with nearest-neighbor integer scaling, a four-color palette, Compatibility rendering, and a 60 FPS cap.
+The previous 25-apple Snake hazard implementation remains available through
+stage options for legacy experiments. Walls, spiders, and mushrooms are disabled
+in the release pacing profiles. The old five-life and ghost-kill-victory flows
+are replaced by the full roadmap's one-life and pellet-completion rules.
 
-## Development playtesting
+## Pixel and the bundled model
 
-Press F1 in the editor/local debug build, or launch directly into the tools:
+Pixel keeps a current-run, in-memory journal of validated events, never raw input
+or a persistent player profile. Event-driven commentary has a 12-second minimum
+cooldown. Stage starts, near-completion, transformations, death and victory take
+priority. Pause and development tools suspend the companion's activity clock.
 
-```sh
-bash run.sh -- --playtest --seed=2026
-```
+Authored fallback lines appear immediately. Local Gemma may replace them with a
+validated reply, but inference never holds gameplay or menu navigation hostage.
+Requests carry run/stage/generation identity; responses from earlier states are
+discarded. Victory retains the journal for the conversation. Leaving dialogue,
+returning to title, or starting another run clears its memory.
 
-The tools pause gameplay while open. The seed stays visible when the tools are closed.
+This implementation deliberately uses **model-selected, authored replies**, not
+unrestricted generated prose. Gemma chooses among context-grounded JSON replies
+under a constrained schema. An exact allowlist validates the result. This makes
+no-spoiler, no-invented-instructions and no-persistent-memory promises enforceable
+with the bundled small model. It is a documented adjustment to the roadmap.
 
-| Debug key | Action |
-| --- | --- |
-| F1 | Open or close tools |
-| F2 | Select Snake at the current preset |
-| F3 | Select Maze at the current preset |
-| F4 | Cycle start, midpoint, near-completion |
-| F5 | Restart current stage |
-| F6 | Toggle invulnerability |
-| F7 | Complete current objective through its actual rules |
-| F8 | Increment seed and reconstruct current preset |
-
-Snake presets contain zero, twelve, or twenty-four apples. Maze entry first simulates real Snake collection using the selected seed. Maze midpoint collects pellets; near-completion walks to a tail trap. These shortcuts do not teleport into uninitialized stages. F7 from Snake shows the full transformation. Invulnerable collisions stop the offending movement rather than putting the head outside the board or inside a ghost.
-
-The release preset excludes `scripts/dev/` and `tests/`. Its `pixel_shift_release` feature disables the debug loader even when the pack is run with an editor executable. Debug inputs are never registered in that pack.
-
-## Checks
-
-```sh
-# Real rendered run from title through 25 apples, shift, ghost defeat, and replay.
-bash tests/autopilot/run.sh
-
-# Snake regressions, including input, all collision types, and seeded spawning.
-OUT_DIR="$PWD/builds/checks/snake" bash tests/autopilot/run.sh "$PWD/tests/autopilot/snake_probe.gd"
-
-# Checkpoint input timing regression.
-OUT_DIR="$PWD/builds/checks/checkpoints" bash tests/autopilot/run.sh "$PWD/tests/autopilot/checkpoint_probe.gd"
-
-# 32 seeds, connected layouts, tail traps, audio signal, and palette.
-OUT_DIR="$PWD/builds/checks/variations" bash tests/autopilot/run.sh "$PWD/tests/autopilot/variation_probe.gd"
-```
-
-The runner requires Python 3 to validate its JSON report. Default results and rendered frames land in `tests/autopilot/out/`. `OUT_DIR` keeps additional runs separate. The original waypoint template remains in `tests/autopilot/autopilot.gd`; it is not the current game's acceptance test.
-
-Automated probes drive actual input for the full game, then use explicit fixtures for collision edge cases. Rendered frames have been visually inspected. These are automated playtests, not a claim that a human played on the handheld. See `VERIFICATION.md` for the evidence and limitations.
-
-## Release pack
-
-```sh
-/Applications/Summer.app/Contents/MacOS/Summer --headless --path "$PWD" --export-pack 'Pixel Shift release' "$PWD/builds/pixel-shift-v0.2.pck"
-/Applications/Summer.app/Contents/MacOS/Summer --headless --main-pack "$PWD/builds/pixel-shift-v0.2.pck" --script "$PWD/tests/autopilot/release_check.gd"
-```
-
-`builds/pixel-shift-v0.1.zip` preserves the passing Snake source checkpoint. The v0.2 PCK is game data, not a standalone executable or proof of handheld performance. Physical deployment requires separate approval and the exact `/Users/j/summer-uno-q/SKILL.md` workflow. No board scripts were changed and no hardware was deployed.
-
-## Code map
-
-- `scripts/game_flow.gd` owns score, lives, stage changes, menus, pause, and replay.
-- `scripts/snake_stage.gd` and `scripts/maze_stage.gd` own deterministic grid mechanics and emit events.
-- `scripts/game_board.gd` draws both stages and interpolates the transformation.
-- `scripts/grid.gd` defines board geometry and input bindings.
-- `scripts/pixel_art.gd` contains the palette, bitmap type, and tiny sprites.
-- `scripts/retro_audio.gd` creates and plays short local PCM sound cues.
-- `scripts/dev/playtest_manager.gd` owns development-only checkpoints.
-
-Frogger, Asteroids, sensor mechanics, LLM-driven gameplay, networking, persistence, and additional cartridges remain deferred.
-
-## Bundled local LLM
-
-Gemma 3 270M is available through a reusable local service. It is deliberately not connected to gameplay or UI yet.
-
-Fetch the pinned model and macOS/Linux ARM64 runtimes, then run a real local inference check:
+The existing Gemma 3 270M GGUF and `llama-server` remain the only model runtime.
+The server binds to `127.0.0.1`. There is no Ollama or cloud fallback.
 
 ```sh
 bash tools/llm/fetch-assets.sh
 bash tests/llm/run.sh
+/Applications/Summer.app/Contents/MacOS/Summer --headless --path "$PWD" --script tests/ai/model_smoke.gd
+OUT_DIR="$PWD/build/validation/model-rendered" bash tests/autopilot/run.sh "$PWD/tests/ai/rendered_model_probe.gd"
 ```
 
-Future game code can instantiate `res://scripts/llm/llm_service.gd`, add it to the scene tree, then call `await start()`, `await generate(prompt)`, and `stop()`. The server listens only on `127.0.0.1`.
+The first command downloads pinned assets when needed. Normal game operation
+never downloads anything. `--no-model` disables inference for deterministic
+playtesting. Dialogue still works if assets are absent or inference fails.
 
-Build a fresh Uno Q export with the Linux runtime and model inside the same ZIP:
+## Development tools
+
+```sh
+bash run.sh -- --playtest --no-model --seed=2026
+```
+
+| Key | Action |
+| --- | --- |
+| F1 | Open/close tools |
+| F2 / F3 | Previous/next stage checkpoint |
+| F4 | Start, midpoint, near-completion preset |
+| F5 | Reconstruct preset |
+| F6 | Toggle invulnerability |
+| F7 | Complete the current objective |
+| F8 | Next reproducible seed |
+| F9 | Switch Normal/Demo |
+
+Checkpoint construction initializes preceding stages and runs their objective
+mechanics with temporary invulnerability. It is a development fixture, not proof
+of a normal playable route. Closing tools leaves the selected stage awaiting
+input. Release exports exclude both tools and tests and register no debug keys.
+
+## Verification
+
+```sh
+bash tests/roadmap/run.sh
+```
+
+The runner records fresh evidence in `builds/checks/roadmap/run-*`, checks exit codes
+and engine logs, runs stage/AI/coordinator unit probes, rendered continuous runs,
+and layout fixtures. Set `RELEASE_PACK` to a freshly exported PCK to include
+isolated release-pack verification. `SUMMER_BIN` overrides the engine.
+Python 3 is required for evidence validation. See `VERIFICATION.md` for executed
+results and remaining checks. Legacy probes under `tests/autopilot/` describe the
+old two-stage rules; the roadmap runner is the current acceptance entry point.
+
+## Uno Q and hardware feedback
 
 ```sh
 bash tools/llm/build-uno-bundle.sh
 ```
 
-The result is `build/game-linux-arm64.zip`. Model weights and native libraries remain outside the Godot `.pck` under the archive's `llm/` directory.
+The bundle is `build/game-linux-arm64.zip`. Model weights and native libraries
+live beside the executable under `llm/`, outside the PCK. Exporting a ZIP is not
+proof that it runs on the board.
+
+`HardwareFeedback` emits rate-limited light-pulse requests and blue 13x8 matrix
+frames through an optional transport. Its desktop mock is tested. The supplied
+kit exposes an internal vibration RPC but no game-facing output API or matrix
+RPC. **Physical feedback is not connected.** No board scripts are modified to
+work around that boundary. Gameplay remains readable without the adapter.
+
+Physical deployment must follow `/Users/j/summer-uno-q/SKILL.md` and its `board/`
+scripts exactly. The app name and icon must be confirmed for each deployment.
+No improvised adb, container, firmware or installer commands are appropriate.
+
+## Code map
+
+- `game_flow.gd`: run lifecycle, stage handoffs, input routing, score, pause/replay.
+- `snake_stage.gd`, `maze_stage.gd`, `frogger_stage.gd`, `asteroids_stage.gd`:
+  stage rules, deterministic simulation and semantic events.
+- `pacing_config.gd`, `run_rng.gd`: objectives and independent seeded streams.
+- `transition_director.gd`, `presentation_director.gd`, `game_board.gd`:
+  hard-cut transformations and stage presentation.
+- `pixel_panel.gd`: avatar expressions, stable panel and conversation layout.
+- `ai/`: journal, authored responses, validation, model adapter and controller.
+- `llm/llm_service.gd`: reusable local inference process and HTTP client.
+- `hardware_feedback.gd`, `retro_audio.gd`: optional outputs and local sound cues.
+
+All code-map paths are under `scripts/`. Sensor mechanics, AI-directed gameplay,
+side quests, hybrid stages, persistent memory and phone audio remain deferred.
