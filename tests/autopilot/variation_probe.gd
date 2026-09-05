@@ -21,7 +21,7 @@ func _ready() -> void:
 			failures.append("seed_%d" % seed_value)
 		game.playtest.select_stage("maze", "near-completion")
 		game.stage.step_ghost()
-		var wins: bool = game.state == game.State.VICTORY
+		var wins: bool = game.state == game.State.SHIFTING
 		report("seed_%d_tail_trap" % seed_value, wins)
 		if not wins:
 			failures.append("tail_trap_%d" % seed_value)

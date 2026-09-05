@@ -1,5 +1,5 @@
 Welcome to Summer Engine (c) built on the awesome work by Godot 2007-present Juan Linietsky, Ariel Manzur & Godot Contributors.
-OpenGL API 4.1 Metal - 91.7 - Compatibility - Using Device: Apple - Apple M4
+OpenGL API 4.1 Metal - 90.5 - Compatibility - Using Device: Apple - Apple M1 Pro
 
 [SE] AuthManager: CLI credential found; desktop session exchange required
 [SE] Sparkle: Updater initialized with feed: https://www.summerengine.com/api/desktop/sparkle/appcast.xml

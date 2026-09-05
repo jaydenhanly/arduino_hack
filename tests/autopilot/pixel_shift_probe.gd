@@ -73,10 +73,30 @@ func _ready() -> void:
 	var won := await hunt_ghost()
 	check("normal_input_tail_victory", won)
 	await settle()
-	save_frame("06_normal_result")
+	save_frame("06_ghost_result")
+	for frame in 160:
+		if game.current_stage == "arena":
+			break
+		await get_tree().physics_frame
+	check("arena_entered", game.current_stage == "arena" and game.state == game.State.PLAYING)
+	check("arena_waits_for_direction", not game.stage.started)
+	check("arena_first_bot_spawned", game.stage.bots.size() == 1 and game.stage.bots[0].body.size() == 3)
+	check("arena_player_grows_bigger", game.stage.body.size() + game.stage.growth == 8)
+	await settle()
+	save_frame("07_arena_start")
+	var survived_before: float = game.stage.survived
+	await move_one(game.stage.direction)
+	await settle_physics(30)
+	check("arena_runs_after_input", game.stage.started and game.stage.survived > survived_before)
+	game.playtest.active = true
+	await press("dev_complete", 20)
+	await settle(3)
+	check("arena_survival_victory", game.state == game.State.VICTORY)
+	save_frame("08_arena_result")
 	await press("confirm", 20)
 	check("victory_full_replay", won and game.current_stage == "snake" and game.score == 0 and game.lives == 3)
 	_test_maze_rules()
+	_test_arena_rules()
 	await _test_checkpoints()
 	await press("cancel", 20)
 	check("title_return", game.state == game.State.TITLE)
@@ -125,7 +145,7 @@ func path_to(start: Vector2i, target: Vector2i, blocked: Array[Vector2i], maze: 
 func hunt_ghost() -> bool:
 	for step_index in 180:
 		if game.state != game.State.PLAYING:
-			return game.state == game.State.VICTORY
+			return game.state == game.State.SHIFTING
 		var maze: RefCounted = game.stage
 		var best := Vector2i.ZERO
 		var best_value := -99999.0
@@ -159,7 +179,7 @@ func hunt_ghost() -> bool:
 		if best == Vector2i.ZERO:
 			return false
 		await move_one(best)
-	return game.state == game.State.VICTORY
+	return game.state == game.State.SHIFTING
 
 func canonical_source() -> Dictionary:
 	var cells: Array[Vector2i] = []
@@ -204,23 +224,108 @@ func _test_maze_rules() -> void:
 	game.stage.body.assign([Vector2i(20, 5), Vector2i(19, 5), Vector2i(18, 5), Vector2i(18, 6)])
 	score_before = game.score
 	game.stage.step_ghost()
-	check("tail_defeats_ghost", game.state == game.State.VICTORY and not game.stage.ghost_alive and game.score == score_before + 100)
+	check("tail_defeats_ghost", game.state == game.State.SHIFTING and not game.stage.ghost_alive and game.score == score_before + 100)
+
+func _test_arena_rules() -> void:
+	game.arena_entry = {"body": [Vector2i(10, 6), Vector2i(9, 6), Vector2i(8, 6), Vector2i(7, 6)], "direction": Vector2i.RIGHT}
+	game.current_stage = "arena"
+	game.lives = 3
+	game.restart_stage()
+	var arena: RefCounted = game.stage
+	arena.bots.clear()
+	arena.food.assign([Vector2i(11, 6)])
+	arena.steer(Vector2i.RIGHT)
+	var score_before: int = game.score
+	arena.step()
+	check("arena_food_grows_and_scores", arena.body.size() == 5 and arena.growth == 4 and game.score == score_before + 5 and arena.food.size() == 1 and arena.survived == arena.FOOD_SECONDS)
+	arena.steer(Vector2i.LEFT)
+	arena.step()
+	check("arena_rejects_reversal", arena.body[0] == Vector2i(12, 6))
+	for step_index in 4:
+		arena.step()
+	check("arena_reaches_full_size", arena.body.size() == 9 and arena.growth == 0)
+	check("arena_bigger_is_slower", arena.player_step_seconds() > arena.PLAYER_BASE_STEP)
+	var bot = arena.spawn_bot()
+	check("arena_spawn_far_from_player", bot != null and bot.body.size() == 3 and absi(bot.body[0].x - arena.body[0].x) + absi(bot.body[0].y - arena.body[0].y) >= 6)
+	var second = arena.spawn_bot()
+	check("arena_generations_get_faster", second.generation == bot.generation + 1 and second.step_seconds < bot.step_seconds)
+	arena.bots.clear()
+	var victim = arena.spawn_bot()
+	victim.body.assign([Vector2i(5, 5), Vector2i(4, 5), Vector2i(3, 5)])
+	victim.direction = Vector2i.RIGHT
+	arena.body.assign([Vector2i(5, 4), Vector2i(6, 4), Vector2i(6, 5), Vector2i(6, 6), Vector2i(5, 6)])
+	arena.direction = Vector2i.LEFT
+	arena.pending_direction = Vector2i.LEFT
+	arena.food.clear()
+	score_before = game.score
+	var kos_before: int = arena.kos
+	arena.step_bot(victim)
+	check("arena_bot_dies_on_player_body", victim not in arena.bots and arena.kos == kos_before + 1 and game.score == score_before + arena.KO_POINTS)
+	check("arena_dead_bot_becomes_food", Vector2i(5, 5) in arena.food)
+	arena.bots.clear()
+	var rammer = arena.spawn_bot()
+	rammer.body.assign([Vector2i(8, 3), Vector2i(8, 2), Vector2i(8, 1)])
+	arena.body.assign([Vector2i(7, 3), Vector2i(6, 3), Vector2i(5, 3), Vector2i(4, 3)])
+	arena.direction = Vector2i.RIGHT
+	arena.pending_direction = Vector2i.RIGHT
+	score_before = game.score
+	var survived_before: float = arena.survived
+	arena.food.assign([Vector2i(8, 3)])
+	arena.step()
+	check("arena_head_on_kills_bot_not_player", game.state == game.State.PLAYING and rammer not in arena.bots and arena.body[0] == Vector2i(8, 3) and game.score == score_before + arena.KO_POINTS + 5)
+	check("arena_food_cuts_five_seconds", arena.survived == survived_before + arena.FOOD_SECONDS)
+	arena.bots.clear()
+	var biter = arena.spawn_bot()
+	biter.body.assign([Vector2i(10, 3), Vector2i(9, 3), Vector2i(9, 2)])
+	arena.step()
+	check("arena_player_dies_on_bot_body", game.state == game.State.LIFE_LOST and game.lives == 2)
+	score_before = game.score
+	game.restart_stage()
+	check("arena_restart_valid", game.current_stage == "arena" and game.lives == 2 and game.score == score_before and game.stage.body == game.arena_entry.body and game.stage.bots.size() == 1)
+	arena = game.stage
+	arena.started = true
+	for tick in 700:
+		arena.advance(0.05)
+	check("arena_spawns_every_thirty_seconds", arena.spawned == 2 and arena.survived >= 35.0 or game.state != game.State.PLAYING)
+	game.lives = 3
+	game.restart_stage()
+	arena = game.stage
+	arena.started = true
+	arena.bots.clear()
+	arena.survived = arena.SURVIVE_SECONDS - arena.MELTDOWN_SECONDS + 6.0
+	check("meltdown_fire_ring", arena.meltdown() and arena.fire_depth() == 2 and arena.burning(Vector2i(1, 10)) and not arena.burning(Vector2i(2, 10)))
+	var hot = arena.spawn_bot()
+	check("meltdown_spawns_top_generation", hot != null and hot.generation >= 4 and arena.bot_step_seconds(hot) < 0.06)
+	arena.body.assign([Vector2i(5, 12), Vector2i(4, 12), Vector2i(3, 12), Vector2i(2, 12), Vector2i(1, 12), Vector2i(0, 12)])
+	arena.food.assign([Vector2i(0, 0), Vector2i(10, 10)])
+	hot.body.assign([Vector2i(20, 1), Vector2i(21, 1), Vector2i(22, 1)])
+	arena.advance(0.01)
+	check("meltdown_burns_tail_bots_food", arena.body.size() == 4 and hot not in arena.bots and arena.food == [Vector2i(10, 10)] and game.state == game.State.PLAYING)
+	arena.body.assign([Vector2i(1, 12), Vector2i(2, 12), Vector2i(3, 12)])
+	arena.advance(0.01)
+	check("meltdown_burns_head", game.state == game.State.LIFE_LOST and game.damage_reason == "BURNED ALIVE")
 
 func _test_checkpoints() -> void:
-	for stage_name in ["snake", "maze"]:
+	for stage_name in ["snake", "maze", "arena"]:
 		for preset in ["start", "midpoint", "near-completion"]:
 			game.playtest.select_stage(stage_name, preset)
 			check("checkpoint_%s_%s" % [stage_name, preset], game.current_stage == stage_name and game.state == game.State.PLAYING and game.playtest.last_error.is_empty())
 			if stage_name == "snake":
 				check("snake_preset_%s_count" % preset, game.stage.apples == (0 if preset == "start" else (2 if preset == "midpoint" else 4)))
-			else:
+			elif stage_name == "maze":
 				check("maze_preset_%s_valid" % preset, game.stage.body.size() == 4 and game.stage.walkable(game.stage.body[0]) and game.score >= 50)
+			else:
+				check("arena_preset_%s_valid" % preset, not game.stage.started and game.score >= 150 and game.stage.survived >= (0.0 if preset == "start" else (150.0 if preset == "midpoint" else 270.0)))
 	game.playtest.select_stage("maze", "near-completion")
 	await settle()
-	save_frame("07_tail_trap_checkpoint")
+	save_frame("09_tail_trap_checkpoint")
 	await press("dev_complete", 20)
 	await settle(3)
-	check("debug_complete_maze", game.state == game.State.VICTORY)
+	check("debug_complete_maze", game.state == game.State.SHIFTING)
+	game.playtest.select_stage("arena", "start")
+	await press("dev_complete", 20)
+	await settle(3)
+	check("debug_complete_arena", game.state == game.State.VICTORY)
 	game.playtest.select_stage("snake", "near-completion")
 	await press("dev_complete", 20)
 	check("debug_complete_runs_transition", game.state == game.State.SHIFTING)
@@ -237,6 +342,6 @@ func _test_checkpoints() -> void:
 	check("debug_restart_keeps_invulnerability", game.stage.invulnerable and not game.stage.started)
 	await press("dev_panel", 20)
 	await settle()
-	save_frame("08_debug_tools")
+	save_frame("10_debug_tools")
 	await press("dev_panel", 20)
 	await press("dev_invulnerable", 20)

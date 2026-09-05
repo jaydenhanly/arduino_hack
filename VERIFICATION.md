@@ -22,6 +22,12 @@ The full run checks the exact fifth-apple gate; retained head/tail cells; wall, 
 
 Variation checks cover seeds 0 through 31, a non-default score/life carry-over, actual invulnerable ghost contact, completing a paused shift, and deterministic ghost choices. The rendered capture contains exactly four colors at 400x240. The game window measures 800x480. The generated audio signal reached approximately -20.4 dB on the engine's test mixer.
 
+## Arena stage (03) addendum, September 5, 2026
+
+The third stage was verified with the same harness after the maze changes. `pixel_shift_probe.gd` now continues past the ghost defeat into the arena shift and checks: arena entry after the shift, the wait for direction, the first computer snake at spawn, the four-to-eight growth, the survival clock running only after input, F7 survival victory, full replay, food growth and scoring, reversal rejection, the 24-cell length cap slowing the player, spawn distance from the player, faster later generations, a computer snake dying on the player's body and leaving food, the player dying on a computer snake, arena restart, and a second spawn after 30 seconds. All nine development presets across the three stages are entered without errors. `checkpoint_probe.gd` and `variation_probe.gd` now expect the ghost defeat to start the arena shift rather than end the game; both pass.
+
+`arena_sim_probe.gd` plays 150 seconds with a simple automatic player on three seeds and reports generation lifetimes. Generation 0 lived 12 to 19 seconds, generation 1 about 30 seconds, and later generations outlived the automatic player. That establishes escalation, not human difficulty. The rendered frames `07_arena_start.jpg` and `08_arena_result.jpg` show the arena HUD and the survival result panel.
+
 ## Visual inspection
 
 Inspected captured title, initial pixel, mid-transformation, Maze entry, normal victory, and development tools frames. The first implementation obscured the initial pixel with a hint panel; that was fixed before the Snake gate was archived. Transformation frames show body blocks moving and stretching while pellets spread from the fifth apple, with the retained player visible throughout.
