@@ -54,26 +54,43 @@ func _ready() -> void:
 	wrap_snake.steer(Vector2i.RIGHT)
 	wrap_snake.step()
 	check("boundary_loops_right_to_left", wrap_snake.body[0] == Vector2i(0, 6) and not wrap_snake.stopped)
-	for collision in ["body", "wall", "spider"]:
+	for collision in ["wall", "spider"]:
 		game.start_run()
 		game.score = 30
 		var snake: RefCounted = game.stage
 		snake.steer(Vector2i.RIGHT)
-		if collision == "body":
-			snake.body.assign([Vector2i(6, 6), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6), Vector2i(8, 6)])
-		elif collision == "wall":
-			snake.body.assign([Vector2i(6, 6), Vector2i(5, 6), Vector2i(4, 6)])
+		snake.body.assign([Vector2i(6, 6), Vector2i(5, 6), Vector2i(4, 6)])
+		if collision == "wall":
 			snake.walls.assign([Vector2i(7, 6)])
 		else:
-			snake.body.assign([Vector2i(6, 6), Vector2i(5, 6), Vector2i(4, 6)])
 			snake.spiders.assign([Vector2i(7, 6)])
 		snake.step()
 		check("%s_costs_one_life" % collision, game.lives == 4 and game.state == game.State.LIFE_LOST)
+		check("%s_leaves_score_alone" % collision, game.score == 30)
+		var length_before: int = snake.body.size()
 		await press("confirm", 20)
-		check("%s_restart_preserves_run" % collision, game.lives == 4 and game.score == 30 and game.stage.body.size() == 1 and game.stage.apples == 0)
+		# Continuing after a death keeps the run intact: same snake, same score,
+		# same board, waiting for the next steer.
+		check("%s_continue_preserves_run" % collision, game.lives == 4 and game.score == 30 and game.stage == snake and game.stage.body.size() == length_before)
+		check("%s_continue_resumes_play" % collision, game.state == game.State.PLAYING and not snake.stopped and snake.awaiting_input)
+		check("%s_continue_clears_the_threat" % collision, Vector2i(7, 6) not in snake.walls and Vector2i(7, 6) not in snake.spiders)
+	# Biting yourself severs the tail: no life lost, the run continues, and each
+	# severed segment costs an apple. Here 2 of 5 segments are cut off.
+	game.start_run()
+	game.score = 30
+	var bitten: RefCounted = game.stage
+	bitten.steer(Vector2i.RIGHT)
+	bitten.body.assign([Vector2i(6, 6), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6), Vector2i(8, 6)])
+	bitten.step()
+	check("body_keeps_the_run_alive", game.lives == 5 and game.state == game.State.PLAYING and not bitten.stopped)
+	check("body_scores_the_bite", game.score == 10)
+	check("body_severs_the_tail", bitten.body.size() == 4 and bitten.body[0] == Vector2i(7, 6))
+	bitten.step()
+	check("body_still_moves_after_the_bite", bitten.body[0] == Vector2i(8, 6))
 	game.lives = 1
 	game.stage.steer(Vector2i.RIGHT)
-	game.stage.body.assign([Vector2i(6, 6), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6), Vector2i(8, 6)])
+	game.stage.body.assign([Vector2i(6, 6), Vector2i(5, 6), Vector2i(4, 6)])
+	game.stage.walls.assign([Vector2i(7, 6)])
 	game.stage.step()
 	check("zero_lives_game_over", game.state == game.State.GAME_OVER)
 	await settle()

@@ -4,6 +4,7 @@ signal points_earned(amount: int)
 signal life_lost(reason: String)
 signal objective_completed
 signal boost_triggered
+signal tail_severed(segments: int)
 
 const Grid = preload("res://scripts/grid.gd")
 const BASE_STEP_SECONDS := 0.15
@@ -15,6 +16,7 @@ const WALL_TIER_APPLES := 10
 const SPIDER_TIER_APPLES := 15
 const MUSHROOM_TIER_APPLES := 20
 const APPLE_TARGET := 25
+const APPLE_POINTS := 10
 const SPIDER_STEP_TICKS := 2
 const TIER_ONE_WALLS := 3
 const TIER_TWO_WALLS := 3
@@ -56,6 +58,30 @@ func initialize(seed_value: int) -> void:
 	mushroom = OFF_GRID
 	boost_elapsed = 0.0
 	ghost_seed = OFF_GRID
+
+# Losing a life does not wipe the stage: the body, the apples and the board all
+# stay put. Only whatever is sitting on the snake's nose gets swept away, and the
+# snake waits for a steer before it moves again.
+func resume() -> void:
+	stopped = false
+	elapsed = 0.0
+	stretch = 0.0
+	awaiting_input = true
+	pending_direction = direction
+	var head: Vector2i = body[0]
+	var ahead := Grid.wrap(head + direction)
+	walls.erase(ahead)
+	for spider in spiders.duplicate():
+		if _touches_head(spider, head) or spider == ahead:
+			spiders.erase(spider)
+
+func _touches_head(cell: Vector2i, head: Vector2i) -> bool:
+	if cell == head:
+		return true
+	for heading in Grid.DIRECTIONS:
+		if cell == Grid.wrap(head + heading):
+			return true
+	return false
 
 func steer(next_direction: Vector2i) -> void:
 	if stopped or next_direction == Vector2i.ZERO:
@@ -101,12 +127,23 @@ func step() -> void:
 		reason = "WALL HIT"
 	elif next in spiders:
 		reason = "SPIDER BIT YOU"
-	elif next in solid_body:
-		reason = "TAIL HIT"
 	if not reason.is_empty():
 		if not invulnerable:
 			stopped = true
 			life_lost.emit(reason)
+		return
+	# Biting yourself severs the tail instead of ending the run: everything from
+	# the bitten segment back is lost, and each lost segment costs an apple.
+	var bite_index := solid_body.find(next)
+	if bite_index >= 0:
+		if invulnerable:
+			return
+		var severed := body.size() - bite_index
+		body = body.slice(0, bite_index)
+		points_earned.emit(-severed * APPLE_POINTS)
+		tail_severed.emit(severed)
+		body.push_front(next)
+		_advance_spiders()
 		return
 	body.push_front(next)
 	if next == mushroom:
@@ -115,7 +152,7 @@ func step() -> void:
 		spawn_mushroom()
 	if grows:
 		apples += 1
-		points_earned.emit(10)
+		points_earned.emit(APPLE_POINTS)
 		_check_tiers()
 		if stopped:
 			return

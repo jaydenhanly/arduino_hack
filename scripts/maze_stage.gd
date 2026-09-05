@@ -96,6 +96,32 @@ func reachable_cells(start: Vector2i) -> Array[Vector2i]:
 				queue.append(next)
 	return queue
 
+# Same deal as the snake stage: the pellets already collected and the body stay,
+# the ghost simply restarts the hunt from the far side of the maze.
+func resume() -> void:
+	stopped = false
+	started = false
+	elapsed = 0.0
+	ghost_elapsed = 0.0
+	ghost_alive = true
+	pending_direction = direction
+	ghost = _farthest_cell()
+	ghost_next = chase_step()
+
+func _farthest_cell() -> Vector2i:
+	var best := ghost
+	var best_distance := -1
+	for row in Grid.SIZE.y:
+		for column in Grid.SIZE.x:
+			var cell := Vector2i(column, row)
+			if not walkable(cell) or cell in body:
+				continue
+			var distance := absi(cell.x - body[0].x) + absi(cell.y - body[0].y)
+			if distance > best_distance:
+				best_distance = distance
+				best = cell
+	return best
+
 func steer(next_direction: Vector2i) -> void:
 	if stopped or next_direction == Vector2i.ZERO:
 		return

@@ -3,6 +3,7 @@ extends RefCounted
 signal points_earned(amount: int)
 signal life_lost(reason: String)
 signal objective_completed
+signal tail_severed(segments: int)
 
 const Grid = preload("res://scripts/grid.gd")
 const SIZE := Vector2i(48, 24)
@@ -33,6 +34,7 @@ const LOOKAHEAD := 4
 const BANNER_SECONDS := 2.5
 const KO_POINTS := 50
 const SURVIVAL_POINTS := 200
+const FOOD_POINTS := 5
 
 class Bot extends RefCounted:
 	var body: Array[Vector2i] = []
@@ -127,6 +129,33 @@ func player_step_seconds() -> float:
 
 func seconds_left() -> int:
 	return int(ceil(maxf(0.0, SURVIVE_SECONDS - survived)))
+
+# Continue the arena where it broke down: same body, same score, same clock. The
+# fire rolls back far enough to free the head and whatever landed the hit is
+# cleared off the neighbouring cells.
+func resume() -> void:
+	stopped = false
+	started = false
+	elapsed = 0.0
+	spider_elapsed = 0.0
+	pending_direction = direction
+	while meltdown() and burning(body[0]):
+		survived -= FIRE_STEP_SECONDS
+	var head: Vector2i = body[0]
+	for spider in spiders.duplicate():
+		if _within(spider, head, 2):
+			spiders.erase(spider)
+	for cell in walls.duplicate():
+		if _within(cell, head, 1):
+			walls.erase(cell)
+	for bot in bots.duplicate():
+		for cell in bot.body:
+			if _within(cell, head, 2):
+				_kill_bot(bot, false)
+				break
+
+func _within(cell: Vector2i, head: Vector2i, radius: int) -> bool:
+	return absi(cell.x - head.x) + absi(cell.y - head.y) <= radius
 
 func steer(next_direction: Vector2i) -> void:
 	if stopped or next_direction == Vector2i.ZERO:
@@ -295,12 +324,23 @@ func step() -> void:
 		reason = "WALL HIT"
 	elif next in spiders:
 		reason = "SPIDER BIT YOU"
-	elif next in body.slice(0, body.size() if growth > 0 else body.size() - 1):
-		reason = "TAIL HIT"
 	elif _bot_body_at(next) != null:
 		reason = "BITTEN BY A SNAKE"
 	if not reason.is_empty():
 		_damage(reason)
+		return
+	# Same rule as the snake stage: biting yourself cuts the tail off and costs
+	# points, it does not end the run.
+	var bite_index := body.slice(0, body.size() if growth > 0 else body.size() - 1).find(next)
+	if bite_index >= 0:
+		if invulnerable:
+			return
+		var severed := body.size() - bite_index
+		body = body.slice(0, bite_index)
+		growth = 0
+		points_earned.emit(-severed * FOOD_POINTS)
+		tail_severed.emit(severed)
+		body.push_front(next)
 		return
 	var rammed := _bot_at(next)
 	if rammed != null:
@@ -315,7 +355,7 @@ func step() -> void:
 		if body.size() + growth < PLAYER_MAX_LENGTH:
 			growth += 1
 		survived += FOOD_SECONDS
-		points_earned.emit(5)
+		points_earned.emit(FOOD_POINTS)
 		_spawn_food()
 
 func step_bot(bot: Bot) -> void:
