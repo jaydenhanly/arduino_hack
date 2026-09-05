@@ -35,6 +35,13 @@ fi
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
+# A fresh checkout has no generated UID cache. Import once so scene references
+# resolve before the rendered verification process starts.
+if ! "$ENGINE" --headless --path "$PROJECT_DIR" --import >"$OUT/import.log" 2>&1; then
+  tail -30 "$OUT/import.log" >&2
+  exit 1
+fi
+
 # --disable-crash-handler: Summer's handler popen()s atos from inside a signal
 # handler, which turns a clean failure into a hang. Never arm it on an
 # agent-driven run. Note there is deliberately no --headless here: headless has

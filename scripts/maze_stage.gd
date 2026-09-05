@@ -176,3 +176,6 @@ func _damage() -> void:
 	if not invulnerable:
 		stopped = true
 		life_lost.emit("GHOST CAUGHT YOUR HEAD")
+
+func snapshot() -> Dictionary:
+	return {"body": body.duplicate(), "direction": direction}

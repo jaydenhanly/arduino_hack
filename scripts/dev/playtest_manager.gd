@@ -21,7 +21,7 @@ func initialize(flow: Node) -> void:
 			seed_value = int(argument.trim_prefix("--seed="))
 	var bindings := {"dev_panel": KEY_F1, "dev_snake": KEY_F2, "dev_maze": KEY_F3,
 		"dev_preset": KEY_F4, "dev_restart": KEY_F5, "dev_invulnerable": KEY_F6,
-		"dev_complete": KEY_F7, "dev_seed": KEY_F8}
+		"dev_complete": KEY_F7, "dev_seed": KEY_F8, "dev_arena": KEY_F9}
 	for action: String in bindings:
 		InputMap.add_action(action)
 		var event := InputEventKey.new()
@@ -39,6 +39,8 @@ func _input(event: InputEvent) -> void:
 			select_stage("snake", PRESETS[preset_index])
 		elif event.is_action_pressed("dev_maze"):
 			select_stage("maze", PRESETS[preset_index])
+		elif event.is_action_pressed("dev_arena"):
+			select_stage("arena", PRESETS[preset_index])
 		elif event.is_action_pressed("dev_preset"):
 			preset_index = (preset_index + 1) % PRESETS.size()
 			select_stage(game.current_stage, PRESETS[preset_index])
@@ -72,7 +74,7 @@ func select_stage(stage_name: String, preset: String = "start") -> void:
 		var target := 0 if preset == "start" else (SnakeStage.APPLE_TARGET / 2 if preset == "midpoint" else SnakeStage.APPLE_TARGET - 1)
 		_feed_snake(target)
 		game.stage.awaiting_input = true
-	else:
+	elif stage_name == "maze":
 		_feed_snake(SnakeStage.APPLE_TARGET)
 		if game.state != game.State.SHIFTING:
 			return
@@ -81,6 +83,23 @@ func select_stage(stage_name: String, preset: String = "start") -> void:
 			_collect_pellets(5)
 		elif preset == "near-completion":
 			_prepare_tail_trap()
+		game.stage.started = false
+	else:
+		_feed_snake(SnakeStage.APPLE_TARGET)
+		if game.state != game.State.SHIFTING:
+			return
+		game._enter_maze()
+		if not _prepare_tail_trap():
+			return
+		game.stage.step_ghost()
+		if game.state != game.State.SHIFTING:
+			last_error = "NO ARENA ENTRY"
+			return
+		game._enter_arena()
+		if preset == "midpoint":
+			_advance_arena(150.0)
+		elif preset == "near-completion":
+			_advance_arena(270.0)
 		game.stage.started = false
 
 func complete_objective() -> void:
@@ -96,6 +115,11 @@ func complete_objective() -> void:
 		if game.state == game.State.PAUSED:
 			game.state = game.State.PLAYING
 		_feed_snake(SnakeStage.APPLE_TARGET)
+	elif game.current_stage == "arena":
+		if game.state != game.State.PLAYING:
+			game.restart_stage()
+		game.stage.started = true
+		_advance_arena(game.stage.SURVIVE_SECONDS)
 	else:
 		if game.state != game.State.PLAYING:
 			game.restart_stage()
@@ -180,6 +204,18 @@ func _walk(path: Array[Vector2i]) -> void:
 		if game.state != game.State.PLAYING:
 			return
 
+func _advance_arena(target_seconds: float) -> void:
+	var arena: RefCounted = game.stage
+	arena.invulnerable = true
+	arena.started = true
+	var ticks := 0
+	while arena.survived < target_seconds and not arena.stopped and ticks < 20000:
+		arena.advance(0.05)
+		ticks += 1
+	arena.invulnerable = game.invulnerable
+	if ticks == 20000:
+		last_error = "ARENA STEP LIMIT"
+
 func _collect_pellets(target: int) -> void:
 	while game.stage.collected < target and not game.stage.pellets.is_empty():
 		var path := _path(game.stage.body[0], game.stage.pellets[0], [game.stage.ghost], game.stage)
@@ -214,7 +250,7 @@ func draw_overlay(canvas: CanvasItem) -> void:
 		return
 	canvas.draw_rect(Rect2(30, 43, 340, 159), Art.LIGHT)
 	canvas.draw_rect(Rect2(30, 43, 340, 159), Art.INK, false, 2)
-	var lines := ["PLAYTEST / DEBUG BUILD ONLY", "F2 SNAKE  F3 MAZE", "F4 PRESET: " + PRESETS[preset_index],
+	var lines := ["PLAYTEST / DEBUG BUILD ONLY", "F2 SNAKE  F3 MAZE  F9 ARENA", "F4 PRESET: " + PRESETS[preset_index],
 		"F5 RESTART  F6 INVULNERABILITY", "F7 COMPLETE  F8 NEXT SEED", "F1 CLOSE / BUTTON B CLOSE"]
 	for index in lines.size():
 		Art.text(canvas, lines[index], Vector2(42, 55 + index * 21))

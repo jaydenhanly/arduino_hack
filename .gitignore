@@ -1,5 +1,6 @@
 # Summer Engine defaults
 .godot/
+.summer/
 *.import
 *.translation
 .DS_Store
@@ -11,6 +12,12 @@ Thumbs.db
 
 # Summer Engine local-only state (SummerGit, caches, locks)
 .summer/local/
+
+# Probe output, exports, fetched LLM assets
+tests/autopilot/out/
+builds/
+build/
+vendor/llm/
 
 # Dependencies & build output
 node_modules/
