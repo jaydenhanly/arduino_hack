@@ -130,6 +130,33 @@ func player_step_seconds() -> float:
 func seconds_left() -> int:
 	return int(ceil(maxf(0.0, SURVIVE_SECONDS - survived)))
 
+# Continue the arena where it broke down: same body, same score, same clock. The
+# fire rolls back far enough to free the head and whatever landed the hit is
+# cleared off the neighbouring cells.
+func resume() -> void:
+	stopped = false
+	started = false
+	elapsed = 0.0
+	spider_elapsed = 0.0
+	pending_direction = direction
+	while meltdown() and burning(body[0]):
+		survived -= FIRE_STEP_SECONDS
+	var head: Vector2i = body[0]
+	for spider in spiders.duplicate():
+		if _within(spider, head, 2):
+			spiders.erase(spider)
+	for cell in walls.duplicate():
+		if _within(cell, head, 1):
+			walls.erase(cell)
+	for bot in bots.duplicate():
+		for cell in bot.body:
+			if _within(cell, head, 2):
+				_kill_bot(bot, false)
+				break
+
+func _within(cell: Vector2i, head: Vector2i, radius: int) -> bool:
+	return absi(cell.x - head.x) + absi(cell.y - head.y) <= radius
+
 func steer(next_direction: Vector2i) -> void:
 	if stopped or next_direction == Vector2i.ZERO:
 		return

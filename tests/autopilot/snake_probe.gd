@@ -67,8 +67,13 @@ func _ready() -> void:
 		snake.step()
 		check("%s_costs_one_life" % collision, game.lives == 4 and game.state == game.State.LIFE_LOST)
 		check("%s_leaves_score_alone" % collision, game.score == 30)
+		var length_before: int = snake.body.size()
 		await press("confirm", 20)
-		check("%s_restart_preserves_run" % collision, game.lives == 4 and game.score == 30 and game.stage.body.size() == 1 and game.stage.apples == 0)
+		# Continuing after a death keeps the run intact: same snake, same score,
+		# same board, waiting for the next steer.
+		check("%s_continue_preserves_run" % collision, game.lives == 4 and game.score == 30 and game.stage == snake and game.stage.body.size() == length_before)
+		check("%s_continue_resumes_play" % collision, game.state == game.State.PLAYING and not snake.stopped and snake.awaiting_input)
+		check("%s_continue_clears_the_threat" % collision, Vector2i(7, 6) not in snake.walls and Vector2i(7, 6) not in snake.spiders)
 	# Biting yourself severs the tail: no life lost, the run continues, and each
 	# severed segment costs an apple. Here 2 of 5 segments are cut off.
 	game.start_run()

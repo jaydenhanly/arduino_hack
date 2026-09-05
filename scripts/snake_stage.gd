@@ -59,6 +59,30 @@ func initialize(seed_value: int) -> void:
 	boost_elapsed = 0.0
 	ghost_seed = OFF_GRID
 
+# Losing a life does not wipe the stage: the body, the apples and the board all
+# stay put. Only whatever is sitting on the snake's nose gets swept away, and the
+# snake waits for a steer before it moves again.
+func resume() -> void:
+	stopped = false
+	elapsed = 0.0
+	stretch = 0.0
+	awaiting_input = true
+	pending_direction = direction
+	var head: Vector2i = body[0]
+	var ahead := Grid.wrap(head + direction)
+	walls.erase(ahead)
+	for spider in spiders.duplicate():
+		if _touches_head(spider, head) or spider == ahead:
+			spiders.erase(spider)
+
+func _touches_head(cell: Vector2i, head: Vector2i) -> bool:
+	if cell == head:
+		return true
+	for heading in Grid.DIRECTIONS:
+		if cell == Grid.wrap(head + heading):
+			return true
+	return false
+
 func steer(next_direction: Vector2i) -> void:
 	if stopped or next_direction == Vector2i.ZERO:
 		return

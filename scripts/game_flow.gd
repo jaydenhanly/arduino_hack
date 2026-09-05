@@ -76,7 +76,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if state in [State.TITLE, State.GAME_OVER, State.VICTORY]:
 			start_run()
 		elif state == State.LIFE_LOST:
-			restart_stage()
+			resume_stage()
 		elif state == State.PAUSED:
 			state = previous_state
 	elif state == State.PLAYING:
@@ -133,6 +133,16 @@ func restart_stage() -> void:
 	board.mode = current_stage
 	board.stage = stage
 	board.visible = true
+	state = State.PLAYING
+
+# Losing a life costs a heart, not the run so far: the stage keeps going with the
+# same body, the same score and the same board.
+func resume_stage() -> void:
+	if stage == null:
+		restart_stage()
+		return
+	audio.set_paused(false)
+	stage.resume()
 	state = State.PLAYING
 
 func _connect_stage() -> void:
@@ -245,8 +255,11 @@ func _draw() -> void:
 	elif state == State.SHIFTING:
 		Art.centered(self, "PIXEL SHIFT / THE RULES ARE CHANGING", 31)
 	elif state == State.PLAYING and current_stage == "snake" and stage.awaiting_input:
-		Art.centered(self, "ONE PIXEL. YOUR MOVE.", 61)
-		Art.centered(self, "JOYSTICK TO BEGIN", 77, 1, Art.DARK)
+		if stage.direction == Vector2i.ZERO:
+			Art.centered(self, "ONE PIXEL. YOUR MOVE.", 61)
+			Art.centered(self, "JOYSTICK TO BEGIN", 77, 1, Art.DARK)
+		else:
+			Art.centered(self, "JOYSTICK TO CONTINUE", 31)
 	elif state == State.PLAYING and current_stage == "maze" and not stage.started:
 		Art.centered(self, "YOUR TAIL IS NOW A WEAPON", 212)
 		Art.centered(self, "JOYSTICK TO HUNT", 31)
@@ -256,7 +269,7 @@ func _draw() -> void:
 	elif state == State.PAUSED:
 		_panel("PAUSED", "BUTTON C RESUME", "BUTTON B TITLE")
 	elif state == State.LIFE_LOST:
-		_panel(damage_reason, "%d LIVES LEFT" % lives, "BUTTON A RETRY")
+		_panel(damage_reason, "%d LIVES LEFT" % lives, "BUTTON A CONTINUE")
 	elif state == State.GAME_OVER:
 		_panel("GAME OVER", "SCORE %04d" % score, "BUTTON A REPLAY")
 	elif state == State.VICTORY:

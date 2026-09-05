@@ -18,7 +18,7 @@ Verified locally on September 5, 2026, using the installed Summer Engine 0.5.65 
 
 The full run, Snake regression, and checkpoint suite finished with empty runtime-error and frame-warning lists. The full run consumed 25 apples in 244 grid moves and reached Maze victory and replay through normal input. The variation suite stopped at its known seed-6 failure.
 
-The Snake regression covers the blinking start state, first-direction stretch, four movement directions, reversal rejection, apple growth/scoring, every collision type, stage reset, pause, lives, game over, replay, title return, and deterministic free-cell apple placement. Damage cases use explicit state fixtures to make each collision reproducible.
+The Snake regression covers the blinking start state, first-direction stretch, four movement directions, reversal rejection, apple growth/scoring, every collision type, continuing a run after damage, pause, lives, game over, replay, title return, and deterministic free-cell apple placement. Damage cases use explicit state fixtures to make each collision reproducible.
 
 The full run checks the exact 25th-apple gate; retained head/tail cells; wall, apple, and ghost source mappings; pause during the shift; score/life continuity; connected floor; buffered turns; pellet scoring; both head/ghost collision directions; Maze restart; tail victory; and all six development presets.
 

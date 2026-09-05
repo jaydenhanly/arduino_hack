@@ -19,7 +19,7 @@ The launcher uses the installed macOS Summer Engine. Set `SUMMER_BIN` to use ano
 - On the title screen, Button C switches the visual style between the default four-colour green palette and the Copenhagen style: a 16-colour palette, copper-green snake, maze walls drawn as Nyhavn, Børsen, Rundetårn and Rådhus, parked bicycles as Snake obstacles, and a skyline on the title. The style is not saved; every launch starts green.
 - To play only the arena, launch with `bash run.sh -- --stage=arena`, or press `3` on the title screen. Every start and replay then begins in the arena with a fresh score and five lives.
 
-Start with five lives. Apples score 10, pellets score 5, and defeating the ghost scores 100. Damage resets the current stage's local progress but preserves your total score and remaining lives. A retry waits for movement input. Replay starts from Snake with a fresh score and five lives.
+Start with five lives. Apples score 10, pellets score 5, and defeating the ghost scores 100. Damage costs a heart and nothing else: the stage carries on with the same body, the same length and the same score, and only whatever landed the hit is swept off the neighbouring cells. Continuing waits for movement input. Replay starts from Snake with a fresh score and five lives.
 
 The ghost moves more slowly than the player and shows an outlined next cell shortly before moving. Its head contact is dangerous; lure it into one of the three tail cells. Pellets are optional points, not a victory requirement. The transformed maze waits for a fresh direction before the chase starts.
 
@@ -31,7 +31,7 @@ Hazards from the Snake stage return on a clock. At 60 seconds six wall blocks ri
 
 The last 30 seconds are the meltdown. The border catches fire and the ring of flames advances one cell inward every 5 seconds, up to five cells deep. Fire destroys food, kills any computer snake it touches, burns your tail cells away, and costs a life if it reaches your head. Computer snakes now spawn every 5 seconds at the top generation and move 30 percent faster. The screen shakes and an alarm ticks every second. Eating food still cuts 5 seconds, so the meltdown can be shortened.
 
-Collisions follow snake.io rules: whoever's head runs into someone else's body dies. You lose a life only when your head hits a wall, your own body, or a computer snake's body. A computer snake that runs into any part of you, including head-on, dies and counts as a KO. Retry rebuilds the same arena.
+Collisions follow snake.io rules: whoever's head runs into someone else's body dies. You lose a life only when your head hits a wall, your own body, or a computer snake's body. A computer snake that runs into any part of you, including head-on, dies and counts as a KO. Continuing keeps the same arena, body and clock; during a meltdown the fire rolls back far enough to free your head.
 
 A new computer snake spawns at the start and every 30 seconds after that, three cells long, as far from the other heads as possible. Each generation is better than the one before: faster steps (0.17 s down to 0.07 s), a longer length cap, and a smarter brain. Generation 0 wanders toward food and often traps itself. Generation 1 checks reachable space before every turn. Generation 2 starts cutting in ahead of your head. Generation 3 also avoids every head's neighbours. Generation 4 predicts your next cell. Each KO is worth 50 points, and every dead snake leaves half its cells as food. Surviving the timer scores 200.
 
