@@ -9,6 +9,7 @@ func _ready() -> void:
 	game.pixel.model_enabled = false
 	report("title", game.state == game.State.TITLE)
 	save_frame("01_title")
+	game.pixel_panel.title_mode = false
 	game.pixel.message = "I saw those careful turns. You kept finding room when the path grew narrow."
 	for emotion in ["curious", "excited", "worried", "surprised", "proud"]:
 		game.pixel.emotion = emotion

@@ -9,14 +9,32 @@ var controller: Node
 var selected := 0
 var clock := 0.0
 var expanded := false
+var title_mode := true
 
 func _draw() -> void:
 	if controller == null:
 		return
 	if expanded:
 		_draw_conversation()
+	elif title_mode:
+		_draw_title()
 	else:
 		_draw_compact()
+
+func _draw_title() -> void:
+	_avatar(Vector2(184, 91), _title_gaze())
+	draw_rect(Rect2(0, 192, 400, 48), PAPER)
+	draw_line(Vector2(0, 192), Vector2(400, 192), INK, 2)
+	Art.centered(self, "PIXEL RUNS OFFLINE", 201, 1, INK)
+	Art.centered(self, "Powered by Gemma 3 270M", 217, 1, MUTED)
+
+func _title_gaze() -> int:
+	var cycle := fmod(clock, 6.0)
+	if cycle >= 2.5 and cycle < 3.2:
+		return -1
+	if cycle >= 4.8 and cycle < 5.5:
+		return 1
+	return 0
 
 func _draw_compact() -> void:
 	draw_rect(Rect2(0, 192, 400, 48), PAPER)
@@ -61,7 +79,7 @@ func _thinking(origin: Vector2) -> void:
 		var height := 5 if int(clock * 5.0) % 3 == index else 2
 		draw_rect(Rect2(origin + Vector2(index * 6, -height + 5), Vector2(3, height)), MUTED)
 
-func _avatar(origin: Vector2) -> void:
+func _avatar(origin: Vector2, gaze_offset: int = 0) -> void:
 	var bob := roundf(sin(clock * 3.0)) if controller.emotion in ["excited", "surprised"] else 0.0
 	var base := origin + Vector2(0, bob)
 	draw_rect(Rect2(base + Vector2(3, 4), Vector2(26, 24)), INK)
@@ -72,8 +90,8 @@ func _avatar(origin: Vector2) -> void:
 	draw_rect(Rect2(base + Vector2(29, 11), Vector2(3, 9)), INK)
 	var blink := fmod(clock, 4.7) > 4.5
 	var eye_height := 1 if blink else 4
-	draw_rect(Rect2(base + Vector2(9, 11), Vector2(4, eye_height)), INK)
-	draw_rect(Rect2(base + Vector2(20, 11), Vector2(4, eye_height)), INK)
+	draw_rect(Rect2(base + Vector2(9 + gaze_offset, 11), Vector2(4, eye_height)), INK)
+	draw_rect(Rect2(base + Vector2(20 + gaze_offset, 11), Vector2(4, eye_height)), INK)
 	match controller.emotion:
 		"curious":
 			draw_line(base + Vector2(19, 8), base + Vector2(24, 7), INK)

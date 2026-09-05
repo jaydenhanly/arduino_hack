@@ -198,6 +198,7 @@ func start_run(seed_value: int = -1) -> void:
 	transition.active = false
 	pixel.begin_run(run_id, active_seed)
 	pixel_panel.expanded = false
+	pixel_panel.title_mode = false
 	pixel_panel.selected = 0
 	audio.set_paused(false)
 	audio.play("start")
@@ -340,6 +341,7 @@ func _on_conversation_finished() -> void:
 func show_title() -> void:
 	pixel.reset()
 	pixel_panel.expanded = false
+	pixel_panel.title_mode = true
 	state = State.TITLE
 	board.visible = false
 	board.stage = null
@@ -393,9 +395,6 @@ func _panel(title: String, line_one: String, line_two: String) -> void:
 func _draw_title() -> void:
 	draw_rect(Rect2(0, 0, 400, 192), Art.LIGHT)
 	draw_rect(Rect2(18, 18, 364, 157), Art.INK, false, 2)
-	Art.text(self, "POCKET GAME", Vector2(30, 29), 1, Art.DARK)
-	Art.centered(self, "PIXEL", 59, 4)
-	for index in 7:
-		draw_rect(Rect2(125 + index * 20, 109 + (10 if index > 4 else 0), 15, 15), Art.INK if index == 0 else Art.DARK)
+	Art.centered(self, "RETROMANIA", 46, 4)
 	if fmod(clock, 1.1) < 0.85:
 		Art.centered(self, "BUTTON A START", 147, 2)
