@@ -42,7 +42,8 @@ func _ready() -> void:
 		return
 	var first_cell: Vector2i = game.stage.body[0]
 	var first_clock: float = game.clock
-	event("move_right", true)
+	var movement := "move_right" if game.stage.apple.y != first_cell.y else "move_down"
+	event(movement, true)
 	var samples: Array[float] = []
 	var busy_frames := 0
 	var moved_while_busy := false
@@ -79,7 +80,13 @@ func _ready() -> void:
 	report("service_process", service.get_process_id() if service != null else 0)
 	report("inference_no_error", service != null and service.last_error.is_empty() and game.pixel.adapter.retry_after_msec == 0)
 	report("message_after_request", game.pixel.message)
-	event("move_right", false)
+	var diagnostics: Dictionary = game.pixel.diagnostics()
+	report("pixel_diagnostics", diagnostics)
+	report("journal_events", game.pixel.journal.entries())
+	report("llm_authored_message_displayed", diagnostics.source == "llm" and diagnostics.last_request.get("outcome") == "accepted")
+	report("accepted_history_matches_screen", not game.pixel.commentary_history().is_empty()
+		and game.pixel.commentary_history().back().message == game.pixel.message)
+	event(movement, false)
 	await settle(3)
 	save_frame("03_after_inference")
 	game.show_title()

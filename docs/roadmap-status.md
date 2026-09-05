@@ -17,7 +17,7 @@ Reference: `game-v0.2.1.md` in the ai-game-console-hackathon workspace. See
 | Presentation | Stable 400x192 play area and 48-pixel companion panel; increasing stage palettes/activity; procedural sprites/audio; rendered frames |
 | Development | Four stages times three checkpoint presets times two profiles; objective mechanics rather than direct progress assignment; release isolation |
 | Journal | Current-run append-only semantic events, validated tags, bounded summary, retained final run until conversation ends |
-| Companion | Five emotions, checkpoint priority, event-driven cooldown, nonblocking local inference, deterministic authored fallback and stale-response rejection |
+| Companion | LLM-authored live commentary, five emotions, bounded event-linked history, source diagnostics, deterministic immediate fallback and stale-response rejection |
 | Conversation | Exactly three distinct choices per selection turn, maximum three selections, farewell, immediate skip, frozen final scene, no persistent memory |
 | Bundled model | Existing Gemma/llama-server runtime reused and tested; constrained JSON and local-only requests; compatibility smoke test |
 | Hardware interface | Optional semantic pulse and 13x8 blue matrix requests, rate limiting and desktop mock; not a working Uno Q output transport |
@@ -29,10 +29,11 @@ Reference: `game-v0.2.1.md` in the ai-game-console-hackathon workspace. See
   remain available behind options, disabled in Normal and Demo profiles.
 - The newer Pixel introduction supersedes the older instruction to boot directly
   into gameplay. The title does not preview future stages or transformations.
-- Gemma selects from context-grounded authored replies rather than inventing
-  unrestricted dialogue. Shape validation alone cannot enforce the roadmap's
-  semantic promises. This choice makes spoilers, fake mechanical advice, and
-  fabricated long-term memory rejectable at the adapter boundary.
+- Post-victory dialogue still selects from context-grounded authored replies.
+  Live commentary now permits original LLM prose under strict JSON/UI bounds.
+  Shape validation cannot enforce semantic grounding. The bundled 270M model
+  still sometimes confuses current and previous events; the separate strict
+  grounding smoke test reports these findings rather than declaring the prose safe.
 - Model/fallback choices are identical within each turn. A late validated model
   reply cannot silently change the meaning of the player's selected option.
 - A farewell has no response choices. The exactly-three-choices rule applies to

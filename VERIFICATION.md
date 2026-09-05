@@ -1,6 +1,34 @@
 # Verification record
 
-## v0.2.1 current release
+## Live generative commentary, September 5, 2026
+
+The current source checkout differs from the previously exported v0.2.1 bundle.
+No new ARM64 export or Uno Q deployment was performed for this change.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Deterministic Pixel tests | 338 checks passed | `build/validation/commentary/acceptance/run-61Ecm6Vg/ai_unit.log` |
+| Full gameplay and presentation regression | Passed, including four full runs | `build/validation/commentary/acceptance/run-61Ecm6Vg/summary.json` |
+| Real model, existing conversation | Three conversation turns, generative commentary, legacy API and cleanup passed | `build/validation/commentary/legacy-model.log` |
+| Real model-to-screen path | Accepted generated message displayed; Snake moved while inference ran; immediate fallback and process cleanup passed | `build/validation/commentary/rendered-safe-route/results.json` |
+| Real generative event samples | 9 of 10 replies accepted; one repetition kept its fallback | `build/validation/commentary/model-quality-final.log` |
+| Worst-case context | Pruned to one history record; 779 prompt + 128 output + 16 margin tokens fit 1024 | `build/validation/commentary/model-quality-final.log` |
+| Strict grounding review | **Failed**, four non-current-stage references flagged | `build/validation/commentary/model-quality-final.log` |
+
+The rendered test displayed "The new serpent stage was ready!" after a 1,407 ms
+request. Baseline frame p95 was 19.771 ms and inference p95 was 17.402 ms on this
+Mac. This is not a board performance measurement. The frame was visually
+inspected in `build/validation/commentary/rendered-safe-route/03_after_inference.jpg`.
+
+Grounding remains a model-quality limitation, not a transport failure. A real
+sample referred to a ghost escaping during a traffic event. The strict review
+uses conservative heuristics and can flag legitimate references too; it is
+separate from JSON validity, repetition checks and proof of model delivery.
+Earlier prompt trials also produced instruction echoes and copied prior speech.
+The 270M model has not been replaced or fine-tuned, and semantic reliability is
+not claimed. The existing Summer AuthManager shutdown warning remains.
+
+## Previous v0.2.1 export baseline
 
 Verified locally on September 5, 2026 with the installed Summer Engine on macOS.
 The current acceptance entry point is `bash tests/roadmap/run.sh`. It checks

@@ -7,6 +7,7 @@ const Reply = preload("res://scripts/ai/pixel_reply.gd")
 const Adapter = preload("res://scripts/ai/gemma_adapter.gd")
 const Mock = preload("res://tests/ai/mock_adapter.gd")
 const MockService = preload("res://tests/ai/mock_service.gd")
+const Commentary = preload("res://scripts/ai/commentary_prompt.gd")
 
 var failures: Array[String] = []
 var checks: int = 0
@@ -32,8 +33,10 @@ func _run() -> void:
 	_test_periodic()
 	_test_lifecycle()
 	_test_priority_and_staleness()
+	_test_commentary()
 	await _test_real_deadline()
 	await _test_adapter()
+	await _test_commentary_adapter()
 	await process_frame
 	if failures.is_empty():
 		print("PIXEL_AI_UNIT_OK: %d checks" % checks)
@@ -277,8 +280,8 @@ func _test_priority_and_staleness() -> void:
 	var stage_message: String = pixel.message
 	mock.complete(old)
 	check("cross-stage reply discarded", pixel.message == stage_message)
-	mock.complete({"emotion": "proud", "message": "I changed your score."})
-	check("untrusted semantics fallback", pixel.message == stage_message and not pixel.thinking)
+	mock.complete({"emotion": "angry", "message": "Invalid emotion."})
+	check("invalid generated reply fallback", pixel.message == stage_message and not pixel.thinking)
 	pixel.checkpoint("maze", "stage_start", 0, 10, 100)
 	old = mock.requests.back().candidates[1]
 	pixel.begin_run(17, 12345)
@@ -286,7 +289,7 @@ func _test_priority_and_staleness() -> void:
 	var reset_message: String = pixel.message
 	mock.complete(old)
 	check("same run id generation stale", pixel.message == reset_message and mock.maximum_active == 1)
-	check("new run context isolated", mock.requests.back().context.summary.sequence == 1)
+	check("new run context isolated", mock.requests.back().context.current_event.sequence == 1)
 	mock.complete()
 	pixel.checkpoint("snake", "near_completion", 9, 10, 90)
 	old = mock.requests.back().candidates[1]
@@ -408,3 +411,119 @@ func _test_adapter() -> void:
 
 func _wait_for_adapter(adapter: Node, candidates: Array[Dictionary]) -> void:
 	async_result = await adapter.request({}, candidates, true, 2.0)
+
+
+func _test_commentary() -> void:
+	var original := {"emotion": "excited", "message": "I like this crunchy little apple parade!"}
+	check("original commentary permitted", Reply.validate(JSON.stringify(original), false, []) == original)
+	check("punctuation repetition rejected", Reply.repeats_commentary("WE MADE IT!", [{"message": "We made it."}]))
+	check("copied phrase rejected", Reply.repeats_commentary("I like this crunchy little apple parade. More please!", [original]))
+	check("fresh shared topic accepted", not Reply.repeats_commentary("These apples have excellent timing.", [original]))
+	for mutation in [{"emotion": "angry"}, {"message": ""}, {"message": " padded "},
+		{"message": "line\nbreak"}, {"message": "x".repeat(81)}, {"message": "Caf\u00e9"},
+		{"message": "tabs\there"}, {"message": "\"quotes\""}, {"message": "<tag>"}, {"extra": true}]:
+		var invalid := original.duplicate()
+		invalid.merge(mutation, true)
+		check("commentary invalid " + str(mutation), Reply.validate(JSON.stringify(invalid), false, []).is_empty())
+	var schema: Dictionary = Reply.schema(false, [])
+	check("schema generative", not schema.has("oneOf") and not schema.properties.message.has("enum"))
+	check("schema strict", schema.additionalProperties == false and schema.required.size() == 2)
+	check("schema UI bound", schema.properties.message.maxLength == 80 and schema.properties.message.minLength == 1)
+	for kind in Journal.EVENTS:
+		check("prompt defines " + kind, Commentary.EVENTS.has(kind))
+	var pixel := controller(true)
+	var mock: Node = pixel.adapter
+	pixel.checkpoint("snake", "stage_start", 0, 10, 0)
+	check("immediate fallback provenance", pixel.diagnostics().source == "fallback" and pixel.diagnostics().fallback_reason == "pending")
+	check("fallback recorded once", pixel.commentary_history().size() == 1)
+	check("current fallback excluded from prompt", mock.requests.back().context.commentary_history.is_empty())
+	check("trigger explicitly anchored", mock.requests.back().context.current_event.sequence == 1)
+	var facts: Array = pixel.journal.entries()
+	mock.complete(original)
+	check("original accepted and shown", pixel.message == original.message and pixel.diagnostics().source == "llm")
+	check("history replaced not appended", pixel.commentary_history().size() == 1 and pixel.commentary_history()[0].message == original.message)
+	check("facts unchanged by generation", pixel.journal.entries() == facts)
+	check("accepted diagnostics", pixel.diagnostics().last_request.outcome == "accepted" and pixel.diagnostics().totals.accepted == 1)
+	var copy: Array = pixel.commentary_history()
+	copy[0].message = "tampered"
+	check("history snapshots isolated", pixel.commentary_history()[0].message == original.message)
+	pixel.observe("snake", "collectible_streak", 2, 10, 20)
+	pixel.tick(12.0)
+	check("history links speech and event", mock.requests.back().context.commentary_history[0].event_sequence == 1)
+	var fallback: String = pixel.message
+	mock.complete(original)
+	check("exact repetition rejected", pixel.message == fallback and pixel.diagnostics().fallback_reason == "repeated_reply")
+	pixel.observe("snake", "collectible_streak", 3, 10, 30)
+	pixel.tick(12.0)
+	var before: Array = pixel.commentary_history()
+	pixel.observe("snake", "danger_escaped", 3, 10, 30, {"danger": "tail"})
+	mock.complete({"emotion": "curious", "message": "An old event's late reply."})
+	check("new same-stage event rejects old response", pixel.commentary_history() == before and pixel.diagnostics().last_request.outcome == "stale")
+	pixel.tick(12.0)
+	check("latest pending event retained", mock.requests.back().context.current_event.kind == "danger_escaped")
+	check("history bounded", pixel.commentary_history().size() == 3 and mock.requests.back().context.commentary_history.size() == 2)
+	mock.complete({"emotion": "worried", "message": "That tail has terrible manners."})
+	check("generated record linked", pixel.commentary_history().back().event_sequence == pixel.journal.sequence)
+	pixel.begin_run(18, 5)
+	check("run clears commentary", pixel.commentary_history().is_empty())
+	pixel.checkpoint("snake", "stage_start", 0, 10, 0)
+	pixel.tick(9.0)
+	before = pixel.commentary_history()
+	mock.complete(original)
+	check("timed out response not recorded", pixel.commentary_history() == before and pixel.diagnostics().source == "fallback")
+	check("timeout reason retained", pixel.diagnostics().fallback_reason == "timeout")
+	pixel.begin_run(19, 5)
+	pixel.model_enabled = false
+	pixel.checkpoint("snake", "stage_start", 0, 10, 0)
+	check("disabled model observable", pixel.diagnostics().fallback_reason == "model_disabled")
+	pixel.free()
+	pixel = controller(true)
+	pixel.checkpoint("snake", "stage_start", 0, 10, 0)
+	pixel.observe("snake", "run_started", 0, 10, 0)
+	pixel.adapter.complete(original)
+	check("first input bookkeeping preserves stage-start relevance", pixel.diagnostics().source == "llm"
+		and pixel.commentary_history()[0].event_sequence == 1 and pixel.journal.sequence == 2)
+	pixel.free()
+
+
+func _test_commentary_adapter() -> void:
+	var adapter := Adapter.new()
+	var service := MockService.new()
+	adapter.service = service
+	adapter.add_child(service)
+	root.add_child(adapter)
+	var context := {"summary": {"counts": {"danger_escaped": 1}}, "current_emotion": "worried",
+		"current_event": {"sequence": 5, "stage": "maze", "kind": "danger_escaped", "tags": {"danger": "wall"}},
+		"commentary_history": [{"event_sequence": 3, "message": "Oldest line."}, {"event_sequence": 4, "message": "Newer line."}]}
+	var candidates: Array[Dictionary] = [{"emotion": "proud", "message": "Authored secret candidate."}]
+	var original := {"emotion": "worried", "message": "That wall has a mean streak."}
+	service.response = JSON.stringify(original)
+	service.token_counts = [1000, 880]
+	var result: Dictionary = await adapter.request(context, candidates, false, 2.0)
+	check("adapter original output", result == original)
+	check("commentary contains no candidates", not service.prompt.contains("Authored secret candidate") and not service.prompt.contains("safe_replies"))
+	check("commentary prompt selected", service.options.system_prompt == Commentary.SYSTEM)
+	check("commentary output budget", service.tokens == Commentary.OUTPUT_TOKENS)
+	check("history covered by repetition penalty", service.options.repeat_last_n == 1024 and service.options.repeat_penalty == 1.15)
+	check("oldest history pruned first", not service.prompt.contains("Oldest line") and service.prompt.contains("Newer line"))
+	check("context caller unmodified", context.commentary_history.size() == 2)
+	check("full token budget respected", adapter.last_prompt_tokens + service.tokens + Commentary.TOKEN_MARGIN <= Commentary.CONTEXT_TOKENS)
+	var event: Dictionary = JSON.parse_string(service.prompt.get_slice("\n", 0)).current_event
+	check("newest event survives pruning", int(event.sequence) == context.current_event.sequence
+		and event.stage == "maze" and event.kind == "danger_escaped" and event.tags.danger == "wall")
+	service.prompt_token_count = 2000
+	var generations: int = service.generations
+	result = await adapter.request(context, [], false, 2.0)
+	check("overflow fails safely before inference", result.is_empty() and adapter.last_failure == "context_limit" and service.generations == generations)
+	service.prompt_token_count = -1
+	result = await adapter.request(context, [], false, 2.0)
+	check("tokenizer failure fallback", result.is_empty() and adapter.last_failure == "token_count_failed")
+	service.prompt_token_count = 500
+	service.response = "malformed"
+	result = await adapter.request(context, [], false, 2.0)
+	check("invalid output diagnosed", result.is_empty() and adapter.last_failure == "invalid_reply")
+	service.response = ""
+	result = await adapter.request(context, [], false, 2.0)
+	check("inference failure diagnosed", result.is_empty() and adapter.last_failure == "inference_failed")
+	adapter.shutdown()
+	adapter.free()

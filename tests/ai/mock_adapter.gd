@@ -7,6 +7,8 @@ var active_requests: int = 0
 var maximum_active: int = 0
 var busy: bool = false
 var closed: bool = false
+var last_failure: String = ""
+var last_prompt_tokens: int = 0
 
 
 func request(context: Dictionary, candidates: Array[Dictionary], conversation: bool,

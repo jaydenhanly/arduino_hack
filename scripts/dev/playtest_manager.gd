@@ -218,7 +218,9 @@ func draw_overlay(canvas: CanvasItem) -> void:
 	var lines := ["PLAYTEST / DEBUG ONLY", "F2/F3 STAGE: " + Pacing.STAGES[stage_index],
 		"F4 PRESET: " + PRESETS[preset_index], "F5 REBUILD / F6 INVULNERABLE: " + str(game.invulnerable),
 		"F7 COMPLETE / F8 NEXT SEED", "F9 PROFILE: " + game.profile, "F1 OR BUTTON B CLOSE"]
+	var pixel: Dictionary = game.pixel.diagnostics()
+	lines.append("PIXEL %s / EVENT %d / %s" % [pixel.source, pixel.event_sequence, pixel.fallback_reason])
 	for index in lines.size():
-		Art.text(canvas, lines[index], Vector2(35, 46 + index * 18))
+		Art.text(canvas, lines[index], Vector2(35, 46 + index * 16))
 	if not last_error.is_empty():
 		Art.centered(canvas, last_error, 178)

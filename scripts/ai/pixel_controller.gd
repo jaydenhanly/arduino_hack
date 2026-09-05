@@ -2,12 +2,14 @@ extends Node
 
 signal changed
 signal conversation_finished
+signal request_finished(details: Dictionary)
 
 const Journal = preload("res://scripts/ai/run_journal.gd")
 const Fallbacks = preload("res://scripts/ai/pixel_fallbacks.gd")
 const Reply = preload("res://scripts/ai/pixel_reply.gd")
 const Adapter = preload("res://scripts/ai/gemma_adapter.gd")
 const PERIODIC_COOLDOWN := 12.0
+const HISTORY_LIMIT := 3
 
 var emotion: String = "curious"
 var message: String = "PIXEL ONLINE. Ready to play?"
@@ -29,7 +31,7 @@ var _active: bool = false
 var _victory: bool = false
 var _clock: float = 0.0
 var _last_comment: float = 0.0
-var _pending_activity: String = ""
+var _pending_activity: Dictionary = {}
 var _queued: Dictionary = {}
 var _in_flight: bool = false
 var _request_clock_deadline: float = 0.0
@@ -37,6 +39,13 @@ var _history: Array[int] = []
 var _choice_history: Array[String] = []
 var _style: String = "representative"
 var _farewell_remaining: float = 0.0
+var _commentary_history: Array[Dictionary] = []
+var _message_source: String = "authored"
+var _message_sequence: int = 0
+var _latest_commentary_sequence: int = 0
+var _fallback_reason: String = ""
+var _last_request: Dictionary = {}
+var _request_totals := {"requested": 0, "accepted": 0, "stale": 0, "failed": 0}
 
 
 func begin_run(run_id: int, seed: int) -> void:
@@ -59,10 +68,11 @@ func observe(stage: String, kind: String, progress: int, target: int, score: int
 		_active = false
 		_victory = kind == "victory"
 		_invalidate()
-		_pending_activity = ""
+		_pending_activity = {}
 		changed.emit()
 	elif kind in Journal.ACTIVITY:
-		_pending_activity = kind
+		_pending_activity = journal.latest()
+		_latest_commentary_sequence = journal.sequence
 
 
 func checkpoint(stage: String, kind: String, progress: int, target: int, score: int) -> void:
@@ -81,15 +91,12 @@ func checkpoint(stage: String, kind: String, progress: int, target: int, score: 
 		return
 	_change_stage(stage)
 	_invalidate()
-	_pending_activity = ""
+	_pending_activity = {}
 	if kind in ["death", "run_ended", "victory"]:
 		_active = false
 		_victory = kind == "victory"
 	var candidates := Fallbacks.commentary(kind, _rng)
-	_show(candidates[0])
-	_last_comment = _clock
-	if kind not in ["death", "run_ended"]:
-		_enqueue(candidates, false)
+	_comment(candidates, journal.latest(), kind not in ["death", "run_ended"])
 
 
 func begin_conversation() -> void:
@@ -129,6 +136,7 @@ func end_conversation() -> void:
 	_victory = false
 	_active = false
 	journal.clear()
+	_commentary_history.clear()
 	changed.emit()
 	if was_conversing:
 		conversation_finished.emit()
@@ -137,13 +145,15 @@ func end_conversation() -> void:
 func reset() -> void:
 	_invalidate()
 	journal.clear()
+	_commentary_history.clear()
 	_active = false
 	_victory = false
 	_run_id = 0
+	_latest_commentary_sequence = 0
 	_stage = ""
 	_clock = 0.0
 	_last_comment = 0.0
-	_pending_activity = ""
+	_pending_activity = {}
 	conversing = false
 	exchange = 0
 	_history.clear()
@@ -157,6 +167,7 @@ func tick(delta: float) -> void:
 		return
 	_clock += delta
 	if thinking and not model_enabled:
+		_fallback_reason = "model_disabled"
 		_invalidate()
 		changed.emit()
 	if conversing and exchange == 3:
@@ -165,15 +176,15 @@ func tick(delta: float) -> void:
 			end_conversation()
 		return
 	if thinking and _clock >= _request_clock_deadline:
+		_fallback_reason = "timeout"
 		_invalidate()
 		changed.emit()
 	if _active and not _pending_activity.is_empty() and _queued.is_empty() and not thinking:
 		if _clock - _last_comment >= PERIODIC_COOLDOWN:
-			var candidates := Fallbacks.commentary(_pending_activity, _rng)
-			_pending_activity = ""
-			_last_comment = _clock
-			_show(candidates[0])
-			_enqueue(candidates, false)
+			var event := _pending_activity
+			_pending_activity = {}
+			var candidates := Fallbacks.commentary(event.kind, _rng)
+			_comment(candidates, event)
 	_dispatch()
 
 
@@ -182,10 +193,54 @@ func conversation_context() -> Dictionary:
 		"prior_choices": _choice_history.duplicate(), "exchange": exchange}
 
 
+func commentary_history() -> Array[Dictionary]:
+	return _commentary_history.duplicate(true)
+
+
+func commentary_context(event: Dictionary) -> Dictionary:
+	var recent: Array[Dictionary] = []
+	for record in _commentary_history:
+		if record.event_sequence != event.sequence:
+			recent.append(record.duplicate(true))
+	var current := event.duplicate(true)
+	current.erase("run_id")
+	return {"summary": {"run_id": _run_id, "counts": journal.summary().counts},
+		"current_event": current, "current_emotion": emotion, "commentary_history": recent}
+
+
+func diagnostics() -> Dictionary:
+	return {"source": _message_source, "event_sequence": _message_sequence,
+		"fallback_reason": _fallback_reason, "last_request": _last_request.duplicate(true),
+		"totals": _request_totals.duplicate(), "thinking": thinking}
+
+
+func _record_comment(event: Dictionary, reply: Dictionary) -> void:
+	var record := {"event_sequence": event.sequence, "stage": event.stage, "kind": event.kind,
+		"emotion": reply.emotion, "message": reply.message}
+	for index in _commentary_history.size():
+		if _commentary_history[index].event_sequence == event.sequence:
+			_commentary_history[index] = record
+			return
+	_commentary_history.append(record)
+	while _commentary_history.size() > HISTORY_LIMIT:
+		_commentary_history.pop_front()
+
+
+func _comment(candidates: Array[Dictionary], event: Dictionary, infer: bool = true) -> void:
+	_invalidate()
+	_latest_commentary_sequence = event.sequence
+	_last_comment = _clock
+	_record_comment(event, candidates[0])
+	_show(candidates[0], "fallback", event.sequence,
+		"pending" if model_enabled and infer else ("model_disabled" if not model_enabled else "authored_only"))
+	if infer:
+		_enqueue(candidates, false, event)
+
+
 func _change_stage(stage: String) -> void:
 	if stage != _stage:
 		_stage = stage
-		_pending_activity = ""
+		_pending_activity = {}
 		_invalidate()
 		changed.emit()
 
@@ -196,7 +251,10 @@ func _conversation_turn() -> void:
 	_enqueue(candidates, true)
 
 
-func _show(reply: Dictionary) -> void:
+func _show(reply: Dictionary, source: String = "authored", sequence: int = 0, reason: String = "") -> void:
+	_message_source = source
+	_message_sequence = sequence
+	_fallback_reason = reason
 	emotion = reply.emotion
 	message = reply.message
 	choices.assign(reply.get("choices", []))
@@ -209,12 +267,13 @@ func _invalidate() -> void:
 	thinking = false
 
 
-func _enqueue(candidates: Array[Dictionary], conversation: bool) -> void:
+func _enqueue(candidates: Array[Dictionary], conversation: bool, event: Dictionary = {}) -> void:
 	if not model_enabled:
 		return
-	var context := conversation_context() if conversation else {"summary": journal.summary(), "emotion": emotion}
+	var context := conversation_context() if conversation else commentary_context(event)
 	_queued = {"generation": _generation, "run_id": _run_id, "stage": _stage,
-		"sequence": journal.sequence, "context": context, "candidates": candidates,
+		"sequence": journal.sequence if conversation else event.sequence,
+		"event": event.duplicate(true), "context": context, "candidates": candidates,
 		"conversation": conversation, "deadline": Time.get_ticks_msec() + int(request_timeout_seconds * 1000.0)}
 	thinking = true
 	_request_clock_deadline = _clock + request_timeout_seconds
@@ -237,19 +296,43 @@ func _dispatch() -> void:
 	var remaining := float(int(request.deadline) - Time.get_ticks_msec()) / 1000.0
 	if remaining <= 0.0:
 		thinking = false
+		_fallback_reason = "timeout"
 		changed.emit()
 		return
 	_in_flight = true
+	_request_totals.requested += 1
+	var started := Time.get_ticks_msec()
 	var result: Dictionary = await adapter.request(request.context, request.candidates,
 		request.conversation, remaining)
 	_in_flight = false
-	if int(request.generation) == _generation and int(request.run_id) == _run_id and request.stage == _stage:
+	var current: bool = int(request.generation) == _generation and int(request.run_id) == _run_id and request.stage == _stage
+	var reason := "stale"
+	if current:
 		thinking = false
-		if Time.get_ticks_msec() < int(request.deadline) and _clock < _request_clock_deadline:
+		if Time.get_ticks_msec() >= int(request.deadline) or _clock >= _request_clock_deadline:
+			reason = "timeout"
+		elif request.conversation or int(request.sequence) == _latest_commentary_sequence:
 			var validated := Reply.validate(JSON.stringify(result), request.conversation, request.candidates)
-			if not validated.is_empty():
-				_show(validated)
+			reason = "invalid_reply"
+			if validated.is_empty() and adapter.get("last_failure") is String and not adapter.last_failure.is_empty():
+				reason = adapter.last_failure
+			elif not validated.is_empty():
+				reason = "accepted"
+				if not request.conversation and Reply.repeats_commentary(validated.message, _commentary_history):
+					reason = "repeated_reply"
+				if reason == "accepted":
+					if not request.conversation:
+						_record_comment(request.event, validated)
+					_show(validated, "llm_selected" if request.conversation else "llm", request.sequence)
+		if reason != "accepted" and not request.conversation:
+			_fallback_reason = reason
 		changed.emit()
+	_request_totals["accepted" if reason == "accepted" else ("stale" if reason == "stale" else "failed")] += 1
+	_last_request = {"run_id": request.run_id, "event_sequence": request.sequence,
+		"conversation": request.conversation, "outcome": reason,
+		"latency_ms": Time.get_ticks_msec() - started,
+		"prompt_tokens": adapter.get("last_prompt_tokens")}
+	request_finished.emit(_last_request.duplicate(true))
 	_dispatch()
 
 

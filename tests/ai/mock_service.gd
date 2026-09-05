@@ -12,6 +12,14 @@ var options: Dictionary = {}
 var starts: int = 0
 var generations: int = 0
 var stopped: bool = false
+var prompt_token_count: int = 600
+var token_counts: Array[int] = []
+var tokenized_prompts: Array[String] = []
+
+
+func count_prompt_tokens(input: String, _system: String, _timeout_msec: int) -> int:
+	tokenized_prompts.append(input)
+	return token_counts.pop_front() if not token_counts.is_empty() else prompt_token_count
 
 
 func start(_timeout_msec: int = 1000) -> Error:

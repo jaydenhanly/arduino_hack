@@ -90,6 +90,28 @@ func is_ready() -> bool:
 	return _server_ready and _process_id > 0 and OS.is_process_running(_process_id)
 
 
+func count_prompt_tokens(prompt: String, system_prompt: String, timeout_msec: int) -> int:
+	if not is_ready() or _request_in_flight:
+		return -1
+	var lifecycle := _lifecycle
+	var deadline := Time.get_ticks_msec() + maxi(1, timeout_msec)
+	var formatted := await _request(HTTPClient.METHOD_POST, "/apply-template", JSON.stringify({
+		"messages": [{"role": "system", "content": system_prompt},
+			{"role": "user", "content": prompt}], "add_generation_prompt": true}), timeout_msec)
+	var data: Variant = formatted.get("json")
+	if lifecycle != _lifecycle or formatted.get("code") != 200 or not data is Dictionary or not data.get("prompt") is String:
+		return -1
+	var remaining := deadline - Time.get_ticks_msec()
+	if remaining <= 0:
+		return -1
+	var tokenized := await _request(HTTPClient.METHOD_POST, "/tokenize", JSON.stringify({
+		"content": data.prompt, "add_special": true, "parse_special": true}), remaining)
+	data = tokenized.get("json")
+	if lifecycle != _lifecycle or tokenized.get("code") != 200 or not data is Dictionary or not data.get("tokens") is Array:
+		return -1
+	return data.tokens.size()
+
+
 func generate(prompt: String, max_tokens: int = 48, options: Dictionary = {}) -> String:
 	if not is_ready():
 		_fail(ERR_UNAVAILABLE, "The bundled LLM runtime is not ready")
@@ -113,6 +135,9 @@ func generate(prompt: String, max_tokens: int = 48, options: Dictionary = {}) ->
 		"temperature": 0.7,
 		"stream": false,
 	}
+	if options.has("repeat_last_n"):
+		payload["repeat_last_n"] = clampi(int(options.repeat_last_n), 0, 1024)
+		payload["repeat_penalty"] = clampf(float(options.get("repeat_penalty", 1.1)), 1.0, 1.5)
 	if options.has("json_schema"):
 		payload["response_format"] = {"type": "json_schema", "json_schema": {
 			"name": "pixel_reply", "strict": true, "schema": options.json_schema}}

@@ -44,10 +44,11 @@ func _run() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
 	var comments := Fallbacks.commentary("victory", rng)
-	var comment: Dictionary = await adapter.request({"summary": journal.summary(),
-		"emotion": "proud"}, comments, false, 8.0)
+	var comment: Dictionary = await adapter.request({"summary": {"counts": journal.summary().counts},
+		"current_event": journal.latest(), "current_emotion": "proud", "commentary_history": []}, comments, false, 8.0)
 	if comment.is_empty():
-		failures.append("commentary returned no validated reply")
+		failures.append("commentary returned no validated reply: " + adapter.last_failure)
+	print("PIXEL_MODEL_COMMENT: %s; prompt_tokens=%d" % [JSON.stringify(comment), adapter.last_prompt_tokens])
 	if frames[0] < 3:
 		failures.append("inference did not yield frames")
 	process_frame.disconnect(on_frame)

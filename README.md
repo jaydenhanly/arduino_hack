@@ -71,15 +71,25 @@ priority. Pause and development tools suspend the companion's activity clock.
 
 Authored fallback lines appear immediately. Local Gemma may replace them with a
 validated reply, but inference never holds gameplay or menu navigation hostage.
-Requests carry run/stage/generation identity; responses from earlier states are
+Requests carry run/stage/generation and event identity; responses from earlier states are
 discarded. Victory retains the journal for the conversation. Leaving dialogue,
 returning to title, or starting another run clears its memory.
 
-This implementation deliberately uses **model-selected, authored replies**, not
-unrestricted generated prose. Gemma chooses among context-grounded JSON replies
-under a constrained schema. An exact allowlist validates the result. This makes
-no-spoiler, no-invented-instructions and no-persistent-memory promises enforceable
-with the bundled small model. It is a documented adjustment to the roadmap.
+Live commentary uses **LLM-authored messages**, not a supplied reply list. The
+strict JSON contract permits five emotions and one UI-safe line of 1-80
+characters. A separate event-linked history holds at most three displayed
+comments, never inserts prose into the trusted journal, and replaces the
+fallback record only after generation passes validation and freshness checks.
+Recent repeated phrases are rejected. The prompt and chat-template token count
+must fit the 1024-token runtime context with space reserved for output.
+
+Post-victory dialogue remains model-selected from authored candidates, with
+unchanged choices. Generative commentary does not have that semantic guarantee:
+the 270M model sometimes confuses old and current events despite valid JSON.
+See `docs/pixel-commentary.md` for the contract, diagnostics and quality limits.
+In development, F1 shows the displayed message source and fallback reason.
+`pixel.diagnostics()` exposes request latency, event sequence and acceptance
+counts; `llm` means generated commentary and `llm_selected` means authored dialogue.
 
 The existing Gemma 3 270M GGUF and `llama-server` remain the only model runtime.
 The server binds to `127.0.0.1`. There is no Ollama or cloud fallback.
@@ -88,6 +98,7 @@ The server binds to `127.0.0.1`. There is no Ollama or cloud fallback.
 bash tools/llm/fetch-assets.sh
 bash tests/llm/run.sh
 /Applications/Summer.app/Contents/MacOS/Summer --headless --path "$PWD" --script tests/ai/model_smoke.gd
+/Applications/Summer.app/Contents/MacOS/Summer --headless --path "$PWD" --script tests/ai/commentary_model_smoke.gd -- --strict-grounding
 OUT_DIR="$PWD/build/validation/model-rendered" bash tests/autopilot/run.sh "$PWD/tests/ai/rendered_model_probe.gd"
 ```
 
@@ -160,7 +171,7 @@ No improvised adb, container, firmware or installer commands are appropriate.
 - `transition_director.gd`, `presentation_director.gd`, `game_board.gd`:
   hard-cut transformations and stage presentation.
 - `pixel_panel.gd`: avatar expressions, stable panel and conversation layout.
-- `ai/`: journal, authored responses, validation, model adapter and controller.
+- `ai/`: trusted journal, commentary prompt/history, authored fallbacks, validation, adapter and controller.
 - `llm/llm_service.gd`: reusable local inference process and HTTP client.
 - `hardware_feedback.gd`, `retro_audio.gd`: optional outputs and local sound cues.
 
