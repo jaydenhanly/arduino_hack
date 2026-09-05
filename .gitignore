@@ -1,9 +1,27 @@
+# Summer Engine defaults
 .godot/
 .summer/
+*.import
+*.translation
+.DS_Store
+Thumbs.db
+
+# AI tooling
+.claude/
+.specstory/
+
+# Summer Engine local-only state (SummerGit, caches, locks)
+.summer/local/
+
+# Probe output, exports, fetched LLM assets
 tests/autopilot/out/
 builds/
 build/
 vendor/llm/
 
-# Summer Engine local-only state (SummerGit, caches, locks)
-.summer/local/
+# Dependencies & build output
+node_modules/
+.next/
+
+# Environment
+.env*
