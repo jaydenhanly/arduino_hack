@@ -9,8 +9,8 @@ Reference: `game-v0.2.1.md` in the ai-game-console-hackathon workspace. See
 | --- | --- |
 | Continuous run | Snake, Maze, Frogger, Asteroids in fixed order; three visible three-second transitions; full rendered input-driven runs |
 | Snake | Wrapping, first-input stretch, no reversal, growth, capped speed increase, configured target; stage unit tests |
-| Maze | Buffered turns, connected layout, at least eight tail segments, pellets, fatal head contact, tail attacks, safe warned ghost respawns; stage tests and live handoff |
-| Frogger | Safe waiting rows, seeded moving traffic, repeated crossings, collisions, input gating; deterministic stage tests and complete runs |
+| Maze | Authored 24x12 ASCII topology, shared neighbors, one tunnel, nine-cell entrance relocation, buffered turns, pellets, fatal head contact, tail attacks, safe warned central respawns |
+| Frogger | Seeded traffic, repeated crossings, 0.25-second reset grace plus neutral rearm while traffic moves; deterministic and rendered tests |
 | Asteroids | Acceleration, inertia, wrapping, shooting, safe warned spawns, particles, collision and victory; deterministic stage tests and complete runs |
 | Configuration | Normal/Demo objectives outside stages; independent stage and companion RNG streams; fresh or explicitly reproducible seeds |
 | Failure and replay | One-life failure, paused gameplay/transitions, victory/payoff, replay and title return; input-driven acceptance |
@@ -18,9 +18,9 @@ Reference: `game-v0.2.1.md` in the ai-game-console-hackathon workspace. See
 | Development | Four stages times three checkpoint presets times two profiles; objective mechanics rather than direct progress assignment; release isolation |
 | Journal | Current-run append-only semantic events, validated tags, bounded summary, retained final run until conversation ends |
 | Companion | LLM-authored live commentary, five emotions, bounded event-linked history, source diagnostics, deterministic immediate fallback and stale-response rejection |
-| Conversation | Exactly three distinct choices per selection turn, maximum three selections, farewell, immediate skip, frozen final scene, no persistent memory |
+| Conversation | Original generated message and three distinct responses; atomic thinking-to-ready turns, endless bounded history, B exits to title and clears pending state |
 | Bundled model | Existing Gemma/llama-server runtime reused and tested; constrained JSON and local-only requests; compatibility smoke test |
-| Hardware interface | Optional semantic pulse and 13x8 blue matrix requests, rate limiting and desktop mock; not a working Uno Q output transport |
+| Hardware interface | Optional semantic pulses and abstract 13x8 aura, bounded versioned local socket, priorities, rate limits and desktop mock; not physically verified |
 
 ## Deliberate deviations and unresolved product decisions
 
@@ -29,15 +29,13 @@ Reference: `game-v0.2.1.md` in the ai-game-console-hackathon workspace. See
   remain available behind options, disabled in Normal and Demo profiles.
 - The newer Pixel introduction supersedes the older instruction to boot directly
   into gameplay. The title does not preview future stages or transformations.
-- Post-victory dialogue still selects from context-grounded authored replies.
-  Live commentary now permits original LLM prose under strict JSON/UI bounds.
-  Shape validation cannot enforce semantic grounding. The bundled 270M model
-  still sometimes confuses current and previous events; the separate strict
-  grounding smoke test reports these findings rather than declaring the prose safe.
-- Model/fallback choices are identical within each turn. A late validated model
-  reply cannot silently change the meaning of the player's selected option.
-- A farewell has no response choices. The exactly-three-choices rule applies to
-  selection turns, not the terminal farewell or replay screen.
+- Live commentary and conversation preserve original LLM prose. Structural checks
+  and a limited quality heuristic reject some broken, repetitive and bland output,
+  but cannot establish personality quality or factual grounding.
+- Conversation choices become selectable only after one atomic model/fallback
+  result. No late result can replace a ready turn. There is no automatic farewell.
+- The current staged balance adjustment sets Normal Maze to 97 pellets, rather
+  than the earlier requested 30. That existing adjustment is preserved; Demo is 10.
 - Automated Normal and Demo runs prove winnability, not human difficulty or
   60 to 90 seconds of play per stage. Those targets still need human tuning.
 
@@ -47,7 +45,9 @@ The supplied `/Users/j/summer-uno-q/board/` bridge has an internal `vibrate` RPC
 Its matrix displays a firmware startup frame. Its public game-accessible APIs do
 not expose either semantic game feedback or dynamic matrix drawing. The game
 therefore provides a tested transport contract and desktop mock, not fabricated
-hardware output. The shared kit has not been modified.
+hardware output. Earlier edits to `board/install-game.sh` and the new
+`board/bridge/summer_feedback/` are frozen, preserved, and inventoried in
+`shared-kit-frozen.md`. No further shared-kit work or deployment is authorized.
 
 Finishing this part requires an approved kit extension providing the output
 transport, followed by physical installation through the supplied scripts. App

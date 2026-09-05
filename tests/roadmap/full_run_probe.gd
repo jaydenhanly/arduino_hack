@@ -4,7 +4,7 @@ const Grid = preload("res://scripts/grid.gd")
 const SEED := 42
 const TICK := 1.0 / 120.0
 const TARGETS := {
-	"normal": {"snake": 10, "maze": 30, "frogger": 3, "asteroids": 12},
+	"normal": {"snake": 10, "maze": 97, "frogger": 3, "asteroids": 12},
 	"demo": {"snake": 3, "maze": 10, "frogger": 1, "asteroids": 4},
 }
 
@@ -167,11 +167,13 @@ func _full_run(profile_name: String, ending: String) -> bool:
 				_tap("confirm")
 				check(run_label + "_selection_%d" % exchange_index, game.pixel.exchange == exchange_index + 1)
 				await _capture(run_label + "_exchange_%d" % (exchange_index + 1))
-			check(run_label + "_farewell", game.state == game.State.CONVERSATION and game.pixel.choices.is_empty() and not game.pixel.message.is_empty())
+			check(run_label + "_continues_after_three", game.state == game.State.CONVERSATION and game.pixel.choices.size() == 3)
 			_tap("confirm")
-			check(run_label + "_no_fourth_exchange", game.pixel.exchange == 3)
+			check(run_label + "_fourth_exchange", game.pixel.exchange == 4)
 			_tick(2.0)
-	if not check(run_label + "_replay_screen", game.state == game.State.VICTORY and not game.pixel.conversing and game.pixel.choices.is_empty()):
+			check(run_label + "_no_automatic_exit", game.state == game.State.CONVERSATION)
+			_tap("cancel")
+	if not check(run_label + "_replay_screen", game.state == game.State.TITLE and not game.pixel.conversing and game.pixel.choices.is_empty()):
 		return false
 	check(run_label + "_journal_cleared_on_exit", game.pixel.journal.entries().is_empty())
 	await _capture(run_label + "_replay_screen")
@@ -207,6 +209,10 @@ func _transition(completed: RefCounted) -> bool:
 	if not check(label + "_started", game.state == game.State.SHIFTING):
 		return false
 	check(label + "_source_preserved", game.next_stage.source == completed.snapshot())
+	var entry_score: int = game.score
+	var identity: int = game.run_id
+	if game.current_stage == "snake":
+		check(label + "_authored_entrance", game.next_stage.body == game.next_stage.topology.body and game.next_stage.body.size() >= 9)
 	await _capture(label + "_start")
 	_tick(1.5)
 	check(label + "_halfway", game.state == game.State.SHIFTING and is_equal_approx(game.board.shift_progress, 0.5))
@@ -215,9 +221,10 @@ func _transition(completed: RefCounted) -> bool:
 	_tick(1.49)
 	check(label + "_not_early", game.state == game.State.SHIFTING)
 	_tick(0.011)
+	check(label + "_identity_and_score", game.run_id == identity and game.score == entry_score)
 	return check(label + "_three_seconds", game.state == game.State.PLAYING and is_equal_approx(game.shift_elapsed, 3.0))
 
-func _route(start: Vector2i, goals: Array, blocked: Dictionary, wrapping: bool) -> Array[Vector2i]:
+func _route(start: Vector2i, goals: Array, blocked: Dictionary, wrapping: bool, maze: RefCounted = null) -> Array[Vector2i]:
 	var queue: Array[Vector2i] = [start]
 	var parents := {start: start}
 	var cursor := 0
@@ -232,6 +239,8 @@ func _route(start: Vector2i, goals: Array, blocked: Dictionary, wrapping: bool) 
 			return result
 		for heading in Grid.DIRECTIONS:
 			var next := Grid.wrap(cell + heading) if wrapping else cell + heading
+			if maze != null:
+				next = maze.neighbor(cell, heading)
 			if not Grid.inside(next) or blocked.has(next) or parents.has(next):
 				continue
 			parents[next] = cell
@@ -283,17 +292,17 @@ func _maze() -> bool:
 		for row in Grid.SIZE.y:
 			for column in Grid.SIZE.x:
 				var cell := Vector2i(column, row)
-				if not stage.walkable(cell) or (stage.ghost_alive and _grid_distance(cell, stage.ghost) <= 1):
+				if not stage.walkable(cell) or (stage.ghost_alive and (cell == stage.ghost or cell in stage.neighbors(stage.ghost))):
 					blocked[cell] = true
-		var route := _route(stage.body[0], stage.pellets, blocked, false)
+		var route := _route(stage.body[0], stage.pellets, blocked, false, stage)
 		var heading := Vector2i.ZERO
 		if not route.is_empty():
-			heading = route[0] - stage.body[0]
+			heading = stage.heading_to(stage.body[0], route[0])
 		else:
 			var safest := -1
 			for candidate in Grid.DIRECTIONS:
-				var destination: Vector2i = stage.body[0] + candidate
-				var distance := _grid_distance(destination, stage.ghost)
+				var destination: Vector2i = stage.neighbor(stage.body[0], candidate)
+				var distance: int = stage.topology.distances(stage.ghost).get(destination, -1)
 				if stage.walkable(destination) and not blocked.has(destination) and distance > safest:
 					heading = candidate
 					safest = distance

@@ -4,6 +4,7 @@ const Controller = preload("res://scripts/ai/pixel_controller.gd")
 const Adapter = preload("res://scripts/ai/gemma_adapter.gd")
 const Service = preload("res://scripts/llm/llm_service.gd")
 const Commentary = preload("res://scripts/ai/commentary_prompt.gd")
+const Reply = preload("res://scripts/ai/pixel_reply.gd")
 
 var failures: Array[String] = []
 var completions: Array[Dictionary] = []
@@ -62,12 +63,14 @@ func _run() -> void:
 			var issues := grounding_issues(pixel.message, event[0], event[1])
 			if not issues.is_empty():
 				grounding_findings.append({"sequence": pixel.journal.sequence, "message": pixel.message, "issues": issues})
-		elif diagnostics.source != "fallback" or diagnostics.fallback_reason != "repeated_reply" or pixel.message != fallback:
-			failures.append("not accepted: %s / %s" % [event[1], diagnostics.fallback_reason])
+		elif diagnostics.source != "fallback" or pixel.message != fallback:
+			failures.append("invalid fallback state: %s / %s" % [event[1], diagnostics.fallback_reason])
 		if pixel.adapter.last_prompt_tokens + Commentary.OUTPUT_TOKENS + Commentary.TOKEN_MARGIN > Commentary.CONTEXT_TOKENS:
 			failures.append("context overflow " + event[1])
 		print("COMMENTARY_SAMPLE: " + JSON.stringify({"event": pixel.journal.latest(),
 			"reply": {"emotion": pixel.emotion, "message": pixel.message}, "fallback": fallback,
+			"model_raw": pixel.adapter.last_raw, "quality_findings": pixel.adapter.last_quality_findings,
+			"structurally_valid": not Reply.validate_structure(pixel.adapter.last_raw, false).is_empty(),
 			"diagnostics": diagnostics, "history_sent": pixel.adapter.last_history_size}))
 	var diagnostic_totals: Dictionary = pixel.diagnostics().totals
 	print("COMMENTARY_ACCEPTANCE: " + JSON.stringify(diagnostic_totals))
@@ -88,10 +91,11 @@ func _run() -> void:
 			"kind": "asteroid_streak", "emotion": "excited", "message": "x!".repeat(40)})
 	var no_candidates: Array[Dictionary] = []
 	var maximum_reply: Dictionary = await pixel.adapter.request(maximum_context, no_candidates, false, 8.0)
-	if maximum_reply.is_empty() or pixel.adapter.last_prompt_tokens + Commentary.OUTPUT_TOKENS + Commentary.TOKEN_MARGIN > Commentary.CONTEXT_TOKENS:
+	if pixel.adapter.last_prompt_tokens + Commentary.OUTPUT_TOKENS + Commentary.TOKEN_MARGIN > Commentary.CONTEXT_TOKENS or pixel.adapter.last_failure == "context_limit":
 		failures.append("maximum context failed bounded generation: " + pixel.adapter.last_failure)
 	print("COMMENTARY_MAX_CONTEXT: " + JSON.stringify({"prompt_tokens": pixel.adapter.last_prompt_tokens,
-		"history_retained": pixel.adapter.last_history_size, "output_budget": Commentary.OUTPUT_TOKENS}))
+		"history_retained": pixel.adapter.last_history_size, "output_budget": Commentary.OUTPUT_TOKENS, "accepted": not maximum_reply.is_empty(),
+		"model_raw": pixel.adapter.last_raw, "quality_findings": pixel.adapter.last_quality_findings}))
 	pixel.adapter.shutdown()
 	pixel.free()
 	if failures.is_empty():

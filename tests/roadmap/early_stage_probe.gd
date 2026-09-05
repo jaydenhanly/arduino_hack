@@ -84,7 +84,7 @@ func _test_snake_rules() -> void:
 	_check(_journal_count(events, "collect") == 3 and _journal_count(events, "objective_completed") == 1, "Snake collect and objective journal")
 	var maze := Maze.new()
 	maze.initialize(stage.snapshot(), {"target": 10})
-	_check(maze.body.size() >= 9 and maze.body.slice(0, 6) == stage.body, "Real Demo handoff keeps Snake and adds eight-cell tail")
+	_check(maze.body.size() >= 9 and maze.body[0] == maze.topology.entrance, "Real Demo handoff relocates Snake into authored nine-cell entrance")
 	_check(_valid_body(maze), "Real Demo handoff has distinct adjacent walkable tail")
 	for heading in Grid.DIRECTIONS:
 		stage.initialize(8, {"advanced_hazards": false})
@@ -177,7 +177,7 @@ func _valid_body(stage: RefCounted) -> bool:
 		occupied[cell] = true
 		if index > 0:
 			var previous: Vector2i = stage.body[index - 1]
-			if absi(cell.x - previous.x) + absi(cell.y - previous.y) != 1:
+			if cell not in stage.neighbors(previous):
 				return false
 	return true
 
@@ -191,16 +191,19 @@ func _test_maze_geometry() -> void:
 		_check(stage.snapshot() == twin.snapshot(), "Maze identical seed yields identical geometry")
 		layouts[str(stage.walls)] = true
 		_check(stage.body.size() >= 9 and _valid_body(stage), "Maze eight valid tail cells at seed " + str(seed_value))
-		_check(stage.walls.size() == Maze.WALL_COUNT, "Maze four safe walls at seed " + str(seed_value))
+		_check(stage.walls.size() == stage.topology.wall_cells.size(), "Maze walls come from authored cells")
 		var reachable: Array[Vector2i] = stage.reachable_cells(stage.body[0])
-		_check(reachable.size() == Grid.SIZE.x * Grid.SIZE.y - stage.walls.size() * 10, "Maze geometry is connected")
+		_check(reachable.size() == Grid.SIZE.x * Grid.SIZE.y - stage.walls.size(), "Maze geometry is connected")
 		_check(stage.pellets.size() >= stage.target, "Maze has enough reachable Normal pellets")
 		for pellet in stage.pellets:
 			_check(pellet in reachable and pellet not in stage.body and pellet != stage.ghost, "Maze pellet is safe and reachable")
 		_check(stage._safe_ghost_cell(stage.ghost), "Maze initial ghost cannot collide on first input")
-		for heading in Grid.DIRECTIONS:
-			_check(stage.walkable(stage.body[0] + heading), "Maze preserves starting exits")
-	_check(layouts.size() > 1, "Maze seeds vary layouts")
+		_check(stage.ghost == stage.topology.ghost_spawn and stage.ghost in stage.topology.ghost_area, "Maze central ghost spawn")
+		_check(stage.body[0] == stage.topology.entrance, "Maze authored entrance")
+	_check(layouts.size() == 1, "Maze layout does not vary with seed")
+	_check(Maze.Layout.CELLS.size() == 12, "Maze twelve rows")
+	for row: String in Maze.Layout.CELLS:
+		_check(row.length() == 24, "Maze twenty-four columns")
 	for row in Grid.SIZE.y:
 		for column in Grid.SIZE.x:
 			for heading in Grid.DIRECTIONS:
@@ -209,30 +212,49 @@ func _test_maze_geometry() -> void:
 					previous.append(Grid.wrap(Vector2i(column, row) - heading * index))
 				var stage := Maze.new()
 				stage.initialize({"body": previous, "direction": heading, "seed": row * 24 + column}, {"target": 10})
-				_check(stage.body[0] == previous[0] and stage.body.size() >= 9 and _valid_body(stage), "Maze repairs wrapped Demo tail at " + str(previous[0]) + str(heading))
+				_check(stage.body[0] == stage.topology.entrance and stage.body.size() >= 9 and _valid_body(stage), "Maze relocates arbitrary incoming Snake at " + str(previous[0]) + str(heading))
 	var stage := Maze.new()
 	stage.initialize({"body": [Vector2i(0, 0)], "direction": Vector2i.LEFT})
 	var before := stage.snapshot()
-	stage.steer(Vector2i.LEFT)
+	stage.steer(Vector2i.DOWN)
 	stage.steer(Vector2i(1, 1))
 	stage.advance(100.0)
 	stage.step()
 	stage.step_ghost()
 	_check(not stage.started and stage.snapshot() == before, "Maze blocked or invalid first input leaves hazards inactive")
-	stage.steer(Vector2i.DOWN)
-	_check(stage.started and stage.direction == Vector2i.DOWN, "Maze first legal input chooses safe movement")
+	stage.steer(Vector2i.RIGHT)
+	_check(stage.started and stage.direction == Vector2i.RIGHT, "Maze first legal input chooses safe movement")
 	stage.initialize(_source())
 	_check(stage.reachable_cells(Vector2i(-1, 0)).is_empty(), "Maze rejects unreachable start")
-	print("PASS Maze seeded geometry and 1,152 wrapped-tail handoffs")
+	var left: Vector2i = stage.topology.tunnel_left
+	var right: Vector2i = stage.topology.tunnel_right
+	_check(stage.neighbor(left, Vector2i.LEFT) == right and stage.neighbor(right, Vector2i.RIGHT) == left, "Maze tunnel links declared endpoints")
+	for cell in stage.reachable_cells(stage.body[0]):
+		for heading in Grid.DIRECTIONS:
+			var destination: Vector2i = stage.neighbor(cell, heading)
+			if destination != Maze.OFF_GRID and absi(destination.x - cell.x) + absi(destination.y - cell.y) != 1:
+				_check((cell == left and destination == right) or (cell == right and destination == left), "Only declared endpoints wrap")
+	stage.ghost_alive = false
+	stage.body[0] = left
+	stage.steer(Vector2i.LEFT)
+	stage.step()
+	_check(stage.body[0] == right, "Player uses tunnel topology")
+	stage.body[0] = right
+	stage.ghost = left
+	_check(stage.chase_step() == right, "Ghost BFS uses tunnel")
+	for cell in stage.reachable_cells(right):
+		stage.ghost = cell
+		var distance: Dictionary = stage.topology.distances(right)
+		_check(distance[stage.chase_step()] == maxi(0, distance[cell] - 1), "Ghost chooses shortest topological step")
+	print("PASS authored Maze topology and 1,152 relocated handoffs")
 
 func _test_maze_objective() -> void:
 	var stage := Maze.new()
 	var events := _observe(stage)
 	stage.initialize(_source(), {"target": 2})
-	stage.walls.clear()
 	stage.ghost_alive = false
 	stage.ghost_respawn_remaining = 4.0
-	stage.pellets.assign([Vector2i(7, 6), Vector2i(8, 6)])
+	stage.pellets.assign([Vector2i(10, 10), Vector2i(11, 10)])
 	stage.steer(Vector2i.RIGHT)
 	stage.step()
 	_check(stage.get_progress() == 1 and events.points == 5 and events.completed == 0, "Maze pellets earn progress and points")
@@ -243,38 +265,34 @@ func _test_maze_objective() -> void:
 	_check(events.completed == 1 and events.points == 10, "Maze objective completion freezes play")
 	_check(_journal_count(events, "collect") == 2 and _journal_count(events, "objective_completed") == 1, "Maze pellet journal events")
 	stage.initialize(_source(), {"target": 1000})
-	stage.walls.clear()
-	stage.pellets.assign([Vector2i(7, 6)])
+	stage.pellets.assign([Vector2i(10, 10)])
 	stage.steer(Vector2i.RIGHT)
 	stage.step()
 	_check(stage.collected == 1 and not stage.pellets.is_empty() and not stage.stopped, "Maze refills pellets for custom targets")
-	stage.walls.assign([Rect2i(7, 5, 1, 1)])
+	stage.body.clear()
+	for index in 9:
+		stage.body.append(Vector2i(12 - index, 10))
 	stage.steer(Vector2i.UP)
 	stage.step()
-	_check(stage.body[0] == Vector2i(8, 6) and stage.pending_direction == Vector2i.UP, "Maze buffers blocked turn while moving forward")
+	_check(stage.body[0] == Vector2i(13, 10) and stage.pending_direction == Vector2i.UP, "Maze buffers blocked turn while moving forward")
 	stage.step()
-	_check(stage.body[0] == Vector2i(8, 5), "Maze takes buffered turn when corridor opens")
+	_check(stage.body[0] == Vector2i(13, 9), "Maze takes buffered turn when corridor opens")
 	_check(stage.body.size() == 9, "Maze preserves full tail during movement")
 	print("PASS Maze pellet objective and buffered turns")
 
 func _tail_defeat(seed_value: int = 42, options: Dictionary = {}) -> RefCounted:
 	var stage := Maze.new()
 	stage.initialize(_source(seed_value), options)
-	stage.walls.clear()
-	stage.body.clear()
-	for column in 9:
-		stage.body.append(Vector2i(column, 0))
-	stage.direction = Vector2i.UP
-	stage.pending_direction = Vector2i.UP
+	stage.direction = Vector2i.DOWN
+	stage.pending_direction = Vector2i.DOWN
 	stage.started = true
-	stage.ghost = Vector2i(1, 1)
+	stage.ghost = stage.body[1]
 	return stage
 
 func _test_maze_collisions() -> void:
 	var stage := Maze.new()
 	var events := _observe(stage)
 	stage.initialize(_source())
-	stage.walls.clear()
 	stage.steer(Vector2i.RIGHT)
 	stage.ghost = stage.body[0] + Vector2i.RIGHT
 	stage.step()
@@ -282,7 +300,6 @@ func _test_maze_collisions() -> void:
 	stage.step_ghost()
 	_check(events.deaths == 1, "Maze death emitted once")
 	stage.initialize(_source())
-	stage.walls.clear()
 	stage.steer(Vector2i.RIGHT)
 	stage.ghost = stage.body[0] + Vector2i.UP
 	stage.step_ghost()
@@ -293,7 +310,6 @@ func _test_maze_collisions() -> void:
 	stage.step()
 	_check(stage.stopped and events.deaths == 3, "Maze existing head overlap cannot escape collision")
 	stage.initialize(_source())
-	stage.walls.clear()
 	stage.invulnerable = true
 	stage.steer(Vector2i.RIGHT)
 	stage.ghost = stage.body[0] + Vector2i.RIGHT
@@ -327,7 +343,7 @@ func _test_respawn() -> void:
 	_check(stage.respawn_warning and not stage.ghost_alive, "Maze warning appears 0.75 seconds before four-second respawn")
 	_check(stage.ghost == stage.ghost_respawn_cell and stage.ghost_next == stage.ghost, "Maze board warning uses ghost position")
 	_check(stage._safe_ghost_cell(stage.ghost), "Maze warned spawn is distant and unoccupied")
-	_check(stage.ghost.x == 0 or stage.ghost.y == 0 or stage.ghost.x == Grid.SIZE.x - 1 or stage.ghost.y == Grid.SIZE.y - 1, "Maze warned spawn is an edge cell")
+	_check(stage.ghost in stage.topology.ghost_area, "Maze warned spawn stays in central ghost area")
 	var warned_cell: Vector2i = stage.ghost
 	stage.advance(0.749)
 	_check(not stage.ghost_alive, "Maze ghost cannot spawn before delay expires")
@@ -356,16 +372,17 @@ func _test_respawn() -> void:
 	stage.advance(3.25)
 	warned_cell = stage.ghost
 	stage.body[0] = warned_cell
-	stage.direction = Vector2i.LEFT if warned_cell.x == 0 else Vector2i.RIGHT
-	if warned_cell.y == 0 or warned_cell.y == Grid.SIZE.y - 1:
-		stage.direction = Vector2i.UP if warned_cell.y == 0 else Vector2i.DOWN
+	stage.direction = Vector2i.ZERO
 	stage.pending_direction = stage.direction
 	stage.advance(0.01)
-	_check(stage.respawn_warning and stage.ghost != warned_cell and stage._safe_ghost_cell(stage.ghost), "Maze reselects warned cell if player approaches")
-	_check(_journal_count(events, "ghost_warning") == 2, "Maze changed spawn gets a new warning")
-	stage.advance(0.74)
-	_check(not stage.ghost_alive, "Maze relocated spawn receives full warning duration")
+	_check(not stage.ghost_alive and not stage.respawn_warning, "Maze waits when central ghost area is unsafe")
+	stage.body.assign(stage.topology.body)
 	stage.advance(0.01)
+	_check(stage.respawn_warning and stage._safe_ghost_cell(stage.ghost), "Maze warns again after player leaves ghost area")
+	_check(_journal_count(events, "ghost_warning") == 2, "Maze changed spawn gets a new warning")
+	stage.advance(0.72)
+	_check(not stage.ghost_alive, "Maze relocated spawn receives full warning duration")
+	stage.advance(0.03)
 	_check(stage.ghost_alive and stage._safe_ghost_cell(stage.ghost), "Maze relocated spawn remains safe at activation")
 	stage.initialize(_source())
 	_check(not stage.started and stage.ghost_alive and not stage.respawn_warning and stage.ghost_respawn_remaining == 0.0 and stage.ghosts_defeated == 0, "Maze initialization resets respawn lifecycle")

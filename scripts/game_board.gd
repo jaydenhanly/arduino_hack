@@ -57,8 +57,17 @@ func _draw_snake(snake: RefCounted) -> void:
 
 func _draw_maze(maze: RefCounted) -> void:
 	var colors := Presentation.palette("maze")
-	for wall: Rect2i in maze.walls:
-		_wall(Rect2(Grid.ORIGIN + Vector2(wall.position) * Grid.CELL, Vector2(wall.size) * Grid.CELL), colors[1], colors[0])
+	for endpoint: Vector2i in [maze.topology.tunnel_left, maze.topology.tunnel_right]:
+		var edge_x: float = Grid.ORIGIN.x - 4 if endpoint.x == 0 else Grid.ORIGIN.x + Grid.SIZE.x * Grid.CELL
+		draw_rect(Rect2(Vector2(edge_x, Grid.rect(endpoint).position.y), Vector2(4, Grid.CELL)), colors[0])
+	for cell: Vector2i in maze.topology.wall_cells:
+		var tile := Grid.rect(cell)
+		draw_rect(tile, colors[1])
+		for heading in Grid.DIRECTIONS:
+			if maze.walkable(cell + heading):
+				var center := tile.get_center() + Vector2(heading) * (Grid.CELL * 0.5 - 1)
+				var half_edge := Vector2(0, 6) if heading.x != 0 else Vector2(6, 0)
+				draw_line(center - half_edge, center + half_edge, colors[2])
 	for pellet: Vector2i in maze.pellets:
 		draw_rect(Rect2(Grid.rect(pellet).get_center().round() - Vector2.ONE, Vector2.ONE * 3), colors[3])
 	if maze.ghost_alive:
@@ -105,7 +114,7 @@ func _draw_conversions(frame: int) -> void:
 		for index in stage.walls.size():
 			var wall: Rect2i = stage.walls[index]
 			var from := Grid.ORIGIN + Vector2(wall.position) * Grid.CELL
-			var to := Vector2(12, 48 + index * 24)
+			var to := Vector2(12, 48 + (index % 5) * 24)
 			var width := lerpf(wall.size.x * Grid.CELL, 376, fraction)
 			draw_rect(Rect2(from.lerp(to, fraction).round(), Vector2(width, 6)), Art.DARK)
 	else:

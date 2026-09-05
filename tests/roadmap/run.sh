@@ -60,6 +60,7 @@ for name, relative, marker in [
     ("late_stages", "tests/roadmap/late_stage_probe.gd", "LATE_STAGE_PROBE_OK"),
     ("ai_unit", "tests/ai/unit.gd", "PIXEL_AI_UNIT_OK"),
     ("coordinator", "tests/roadmap/coordinator_probe.gd", "COORDINATOR_CHECKS"),
+    ("feedback", "tests/feedback/feedback_probe.gd", "FEEDBACK_CHECKS"),
 ]:
     if not (Path(project) / relative).is_file():
         summary["checks"][name] = {"passed": False, "error": f"Missing required probe: {relative}"}
@@ -118,6 +119,11 @@ if os.environ.get("ROADMAP_PRESENTATION", "1") == "1":
         }
     except (OSError, ValueError, TypeError) as error:
         summary["checks"]["presentation_evidence"] = {"passed": False, "error": str(error)}
+
+for name, probe in [("frogger_reset", "tests/feedback/reset_render_probe.gd"),
+                    ("atomic_conversation", "tests/ai/conversation_render_probe.gd")]:
+    environment.update(OUT_DIR=str(output / name), MAX_SECONDS="40")
+    execute(name, ["bash", "tests/autopilot/run.sh", str(Path(project) / probe)], 100, env=environment)
 
 if os.environ.get("RELEASE_PACK"):
     release_pack = str(Path(os.environ["RELEASE_PACK"]).resolve())

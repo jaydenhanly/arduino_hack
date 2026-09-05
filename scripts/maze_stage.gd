@@ -6,9 +6,9 @@ signal objective_completed
 signal journal_event(kind: String, tags: Dictionary)
 
 const Grid = preload("res://scripts/grid.gd")
+const Layout = preload("res://scripts/maze_layout.gd")
 const STEP_SECONDS := 0.15
 const GHOST_SECONDS := 0.36
-const WALL_COUNT := 4
 const MIN_TAIL_SEGMENTS := 8
 const GHOST_MIN_DISTANCE := 6
 const GHOST_BONUS := 100
@@ -40,27 +40,26 @@ var stopped := false
 var invulnerable := false
 var source: Dictionary = {}
 var seed := 0
-var target := 30
+var target := 97
 var rng := RandomNumberGenerator.new()
+var topology: RefCounted = Layout.new()
 
 func initialize(source_snapshot: Dictionary, options: Dictionary = {}) -> void:
 	source = source_snapshot.duplicate(true)
 	seed = int(options.get("seed", source.get("seed", 0)))
 	rng.seed = seed
-	target = maxi(1, int(options.get("target", 30)))
+	target = maxi(1, int(options.get("target", 97)))
 	ghost_respawn_seconds = maxf(0.05, float(options.get("ghost_respawn_seconds", 4.0)))
 	ghost_warning_seconds = clampf(float(options.get("ghost_warning_seconds", 0.75)), 0.05, ghost_respawn_seconds)
 	walls.clear()
 	pellets.clear()
-	_build_body()
-	direction = source.get("direction", Vector2i.RIGHT)
-	if direction not in Grid.DIRECTIONS:
-		direction = Vector2i.RIGHT
+	topology = Layout.new()
+	body.assign(topology.body)
+	for cell: Vector2i in topology.wall_cells:
+		walls.append(Rect2i(cell, Vector2i.ONE))
+	direction = Vector2i.RIGHT
 	pending_direction = direction
-	ghost = source.get("ghost_seed", OFF_GRID)
-	if not _safe_ghost_cell(ghost):
-		ghost = _pick_spawn_cell()
-	_build_walls()
+	ghost = topology.ghost_spawn
 	_build_pellets()
 	ghost_alive = true
 	ghost_warning = false
@@ -74,109 +73,36 @@ func initialize(source_snapshot: Dictionary, options: Dictionary = {}) -> void:
 	stopped = false
 	ghost_next = chase_step()
 
-func _build_body() -> void:
-	body.clear()
-	var previous: Array = source.get("body", [])
-	for cell: Vector2i in previous:
-		if not Grid.inside(cell) or cell in body:
-			break
-		if not body.is_empty() and _distance(body.back(), cell) != 1:
-			break
-		body.append(cell)
-		if body.size() == MIN_TAIL_SEGMENTS + 1:
-			break
-	if body.is_empty():
-		body.append(Vector2i(6, 6))
-	while not _extend_tail():
-		body.pop_back()
-
-func _extend_tail() -> bool:
-	if body.size() >= MIN_TAIL_SEGMENTS + 1:
-		return true
-	for heading in Grid.DIRECTIONS:
-		var candidate: Vector2i = body.back() + heading
-		if not Grid.inside(candidate) or candidate in body:
-			continue
-		body.append(candidate)
-		if _extend_tail():
-			return true
-		body.pop_back()
-	return false
-
-func _build_walls() -> void:
-	var protected: Array[Vector2i] = body.duplicate()
-	protected.append(ghost)
-	for heading in Grid.DIRECTIONS:
-		protected.append(body[0] + heading)
-	var candidates: Array[Vector2i] = []
-	for row in range(1, Grid.SIZE.y - 2):
-		for column in range(1, Grid.SIZE.x - 5):
-			candidates.append(Vector2i(column, row))
-	for index in range(candidates.size() - 1, 0, -1):
-		var swap_index := rng.randi_range(0, index)
-		var cell := candidates[index]
-		candidates[index] = candidates[swap_index]
-		candidates[swap_index] = cell
-	for origin in candidates:
-		var candidate := Rect2i(origin, Vector2i(5, 2))
-		var allowed := true
-		for cell in protected:
-			if candidate.has_point(cell):
-				allowed = false
-		for existing in walls:
-			if candidate.grow(1).intersects(existing):
-				allowed = false
-		if not allowed:
-			continue
-		walls.append(candidate)
-		if reachable_cells(body[0]).size() != Grid.SIZE.x * Grid.SIZE.y - walls.size() * 10:
-			walls.pop_back()
-		if walls.size() == WALL_COUNT:
-			break
-
 func _build_pellets() -> void:
-	var apple: Vector2i = source.get("apple", body[0])
-	_add_pellet(apple)
-	for heading in Grid.DIRECTIONS:
-		_add_pellet(apple + heading)
-	for row in range(1, Grid.SIZE.y, 2):
-		for column in range(1, Grid.SIZE.x, 2):
-			_add_pellet(Vector2i(column, row))
+	for cell: Vector2i in topology.pellet_cells:
+		_add_pellet(cell)
 
 func _add_pellet(cell: Vector2i) -> void:
 	if walkable(cell) and cell not in body and cell != ghost and cell not in pellets:
 		pellets.append(cell)
 
 func walkable(cell: Vector2i) -> bool:
-	if not Grid.inside(cell):
-		return false
-	for wall in walls:
-		if wall.has_point(cell):
-			return false
-	return true
+	return topology.walkable(cell)
+
+func neighbor(cell: Vector2i, heading: Vector2i) -> Vector2i:
+	return topology.neighbor(cell, heading)
+
+func neighbors(cell: Vector2i) -> Array[Vector2i]:
+	return topology.neighbors(cell)
+
+func heading_to(cell: Vector2i, destination: Vector2i) -> Vector2i:
+	return topology.heading_to(cell, destination)
 
 func reachable_cells(start: Vector2i) -> Array[Vector2i]:
-	var queue: Array[Vector2i] = []
-	if not walkable(start):
-		return queue
-	queue.append(start)
-	var seen := {start: true}
-	var cursor := 0
-	while cursor < queue.size():
-		var cell := queue[cursor]
-		cursor += 1
-		for heading in Grid.DIRECTIONS:
-			var next := cell + heading
-			if walkable(next) and not seen.has(next):
-				seen[next] = true
-				queue.append(next)
-	return queue
+	var cells: Array[Vector2i] = []
+	cells.assign(topology.distances(start).keys())
+	return cells
 
 func steer(next_direction: Vector2i) -> void:
 	if stopped or next_direction not in Grid.DIRECTIONS:
 		return
 	if not started:
-		var next := body[0] + next_direction
+		var next := neighbor(body[0], next_direction)
 		if not walkable(next) or (ghost_alive and next == ghost):
 			return
 		direction = next_direction
@@ -217,9 +143,9 @@ func step() -> void:
 	if ghost_alive and ghost == body[0]:
 		_damage()
 		return
-	if walkable(body[0] + pending_direction):
+	if neighbor(body[0], pending_direction) != OFF_GRID:
 		direction = pending_direction
-	var next := body[0] + direction
+	var next := neighbor(body[0], direction)
 	if not walkable(next):
 		return
 	if ghost_alive and next == ghost:
@@ -244,21 +170,10 @@ func step() -> void:
 		ghost_next = chase_step()
 
 func chase_step() -> Vector2i:
-	var queue: Array[Vector2i] = [body[0]]
-	var distance := {body[0]: 0}
-	var cursor := 0
-	while cursor < queue.size():
-		var cell := queue[cursor]
-		cursor += 1
-		for heading in Grid.DIRECTIONS:
-			var next := cell + heading
-			if walkable(next) and not distance.has(next):
-				distance[next] = int(distance[cell]) + 1
-				queue.append(next)
+	var distance: Dictionary = topology.distances(body[0])
 	var best := ghost
 	var best_distance: int = distance.get(ghost, 9999)
-	for heading in Grid.DIRECTIONS:
-		var next := ghost + heading
+	for next in neighbors(ghost):
 		var candidate_distance: int = distance.get(next, 9999)
 		if candidate_distance < best_distance:
 			best = next
@@ -322,13 +237,9 @@ func _advance_respawn(delta: float) -> void:
 
 func _pick_spawn_cell() -> Vector2i:
 	var candidates: Array[Vector2i] = []
-	for row in Grid.SIZE.y:
-		for column in Grid.SIZE.x:
-			if row != 0 and row != Grid.SIZE.y - 1 and column != 0 and column != Grid.SIZE.x - 1:
-				continue
-			var cell := Vector2i(column, row)
-			if _safe_ghost_cell(cell):
-				candidates.append(cell)
+	for cell: Vector2i in topology.ghost_area:
+		if _safe_ghost_cell(cell):
+			candidates.append(cell)
 	if candidates.is_empty():
 		return OFF_GRID
 	return candidates[rng.randi_range(0, candidates.size() - 1)]
@@ -337,7 +248,7 @@ func _safe_ghost_cell(cell: Vector2i) -> bool:
 	return walkable(cell) and cell not in body and _distance(cell, body[0]) >= GHOST_MIN_DISTANCE
 
 func _distance(first: Vector2i, second: Vector2i) -> int:
-	return absi(first.x - second.x) + absi(first.y - second.y)
+	return topology.distances(first).get(second, -1)
 
 func _damage() -> void:
 	if not invulnerable:
@@ -356,6 +267,8 @@ func snapshot() -> Dictionary:
 		"stage": "maze", "seed": seed, "player_position": get_player_position(),
 		"body": body.duplicate(), "direction": direction, "walls": walls.duplicate(),
 		"pellets": pellets.duplicate(), "ghost": ghost, "ghost_next": ghost_next,
+		"layout": Layout.CELLS.duplicate(), "entrance": topology.entrance,
+		"tunnel": [topology.tunnel_left, topology.tunnel_right],
 		"ghost_alive": ghost_alive, "ghost_warning": ghost_warning, "respawn_warning": respawn_warning,
 		"ghost_respawn_cell": ghost_respawn_cell, "ghost_respawn_remaining": ghost_respawn_remaining,
 		"collected": collected, "progress": collected, "target": target,

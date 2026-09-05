@@ -1,6 +1,63 @@
 # Verification record
 
-## Live generative commentary, September 5, 2026
+## Integrated authored Maze and atomic Pixel turns, September 5, 2026
+
+Current desktop acceptance evidence:
+`build/validation/final-v021/run-NoKLTBFK/summary.json` reports all checks passed.
+The existing staged Normal Maze balance change to 97 pellets is preserved;
+Demo remains 10. This differs from the earlier 30-pellet request.
+
+| Check | Result |
+| --- | --- |
+| Snake/Maze topology and handoff | 10,310 deterministic checks passed |
+| Frogger/Asteroids | 769 checks passed |
+| Pixel generation, atomic lifecycle and bounded memory | 656 checks passed |
+| Coordinator | 175 checks passed |
+| Feedback protocol, priorities, rate limits and missing transport | 246 checks passed |
+| Four input-driven full runs | 488 report entries, 77 frames, no failed reports |
+| Presentation fixtures | 7 checks, 11 frames |
+| Frogger actual-input reset fixture | 12 checks, 3 frames |
+| Atomic conversation/rendered text fixtures | 14 checks, 7 frames |
+| Project-only Unix socket capture mock | Passed; `build/validation/final-pixel-model/feedback.log` |
+| Real model commentary | 6/10 accepted, 10/10 structurally valid |
+| Real model conversation | 2/10 accepted, 10/10 structurally valid; ten turns and cleanup passed |
+| Model service | Smoke test passed |
+
+Visually inspected fresh captures under that roadmap directory:
+`atomic_conversation/01_authored_maze.jpg`, `02_short_commentary.jpg`, and
+`03_long_commentary.jpg`. The Maze shows connected walls, constrained corridors,
+central ghost and open horizontal tunnel mouths. `Eep!` and the 80-character
+sample fit the panel, with the long sample using two visual rows. These use
+explicit fixtures, not proof of model-generated text or human difficulty tuning.
+
+The first separate real-model rendered run in
+`build/validation/final-model-rendered/` did not pass its generated-message-display
+assertion: fallback remained visible. That failure is preserved, not counted as
+successful generated delivery. The one retry in
+`build/validation/final-model-rendered-retry/results.json` passed: accepted original
+text reached the panel, Snake moved during inference, fallback appeared immediately,
+and the model process stopped. Its `03_after_inference.jpg` was visually inspected.
+The displayed line was `A sudden shift in energy as I observe... a fleeting glimpse
+of vibrant colors.` It fits two rows but is more abstract narration than the intended
+excitable robot voice. Request latency was 1,436 ms; frame p95 was 17.245 ms before
+and 17.627 ms during inference. These are desktop observations, not board guarantees.
+
+`docs/pixel-model-review.md` records accepted, rejected, bland and broken samples.
+Structural success does not establish personality quality. The current heuristic
+still accepts some generic and incomplete prose. This is a remaining product
+quality limitation. The known Summer AuthManager ObjectDB shutdown warning remains.
+
+No board was touched, no new export was produced, and nothing was deployed.
+All ten frozen shared-kit file hashes match `docs/shared-kit-frozen.md`, including
+the modified installer and new feedback directory from the interrupted direction.
+Those bytes are preserved, not approved hardware implementation. Future approved
+work must complete bridge/firmware integration, then physically check raw-button
+haptics disabled, semantic pulse strength/timing, all aura animations and idle
+return, priority replacement, comment silence, disconnect recovery, and gameplay
+frame timing. See `docs/hardware-feedback.md`. Deployment requires app name and
+emoji and the prescribed Uno Q skill workflow.
+
+## Historical live commentary baseline, September 5, 2026
 
 The current source checkout differs from the previously exported v0.2.1 bundle.
 No new ARM64 export or Uno Q deployment was performed for this change.

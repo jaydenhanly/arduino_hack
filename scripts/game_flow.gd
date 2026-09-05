@@ -16,7 +16,6 @@ const PixelPanel = preload("res://scripts/pixel_panel.gd")
 const Hardware = preload("res://scripts/controller/hardware_feedback.gd")
 const JoystickInput = preload("res://scripts/controller/joystick_input.gd")
 const ButtonInput = preload("res://scripts/controller/button_input.gd")
-const VibrationTransport = preload("res://scripts/controller/vibration_transport.gd")
 const SHIFT_SECONDS := Pacing.TRANSITION_SECONDS
 
 enum State { TITLE, PLAYING, SHIFTING, PAUSED, LIFE_LOST, GAME_OVER, VICTORY, EVOLVED, CONVERSATION }
@@ -49,6 +48,7 @@ var run_started := false
 var run_elapsed := 0.0
 var payoff_elapsed := 0.0
 var near_checkpoint_sent := false
+var last_pixel_message: String = ""
 var last_progress := 0
 var model_enabled := true
 var last_menu_move := -1.0
@@ -73,9 +73,6 @@ func _ready() -> void:
 	add_child(audio)
 	hardware = Hardware.new()
 	add_child(hardware)
-	var vibration_transport := VibrationTransport.new()
-	add_child(vibration_transport)
-	hardware.transport = vibration_transport.send
 	pixel = Pixel.new()
 	pixel.model_enabled = model_enabled
 	add_child(pixel)
@@ -98,11 +95,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_handle_conversation_input(event)
 		return
 	if event.is_action_pressed("cancel"):
-		if state == State.EVOLVED:
-			pixel.end_conversation()
-			state = State.VICTORY
-		else:
-			show_title()
+		show_title()
 	elif event.is_action_pressed("pause"):
 		if state == State.PAUSED:
 			state = previous_state
@@ -147,10 +140,10 @@ func _handle_conversation_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	var tools_open: bool = playtest != null and playtest.panel_open
+	hardware.advance(delta)
 	if state != State.PAUSED and not tools_open:
 		clock += delta
 		pixel.tick(delta)
-		hardware.advance(delta)
 		if state == State.PLAYING:
 			if current_stage == "asteroids" and stage.started:
 				var axis := JoystickInput.vector()
@@ -159,6 +152,9 @@ func _process(delta: float) -> void:
 				var axis := JoystickInput.vector()
 				if axis.length() > 0.5:
 					stage.steer(Vector2i(signf(axis.x), 0) if absf(axis.x) > absf(axis.y) else Vector2i(0, signf(axis.y)))
+				elif stage.needs_neutral and not (Input.is_action_pressed("move_left") or Input.is_action_pressed("move_right")
+						or Input.is_action_pressed("move_up") or Input.is_action_pressed("move_down")):
+					stage.steer(Vector2i.ZERO)
 			if run_started:
 				run_elapsed += delta
 			stage.advance(delta)
@@ -197,7 +193,9 @@ func start_run(seed_value: int = -1) -> void:
 	board.shift_source.clear()
 	transition.active = false
 	pixel.begin_run(run_id, active_seed)
+	hardware.reset()
 	pixel_panel.expanded = false
+	pixel_panel.title_mode = false
 	pixel_panel.selected = 0
 	audio.set_paused(false)
 	audio.play("start")
@@ -318,28 +316,24 @@ func _observe(kind: String, tags: Dictionary = {}) -> void:
 
 func _checkpoint(kind: String) -> void:
 	pixel.checkpoint(current_stage, kind, stage.get_progress(), stage.target, score)
-	# death/victory/transformation_started each fire their own specific cue right
-	# after this call; the generic checkpoint pulse would otherwise land in the
-	# same instant and rate-limit that more important cue's vibration to 0ms.
-	if kind not in ["death", "victory", "transformation_started"]:
-		hardware.emit_feedback("checkpoint")
 
 func _on_pixel_changed() -> void:
 	if pixel_panel != null:
 		pixel_panel.selected = clampi(pixel_panel.selected, 0, maxi(0, pixel.choices.size() - 1))
 		pixel_panel.queue_redraw()
-	if hardware != null and not pixel.thinking:
+	if hardware != null and state == State.PLAYING and pixel.message != last_pixel_message:
 		hardware.emit_feedback("comment")
+	last_pixel_message = pixel.message
 
 func _on_conversation_finished() -> void:
 	if state not in [State.CONVERSATION, State.EVOLVED]:
 		return
-	pixel_panel.expanded = false
-	state = State.VICTORY
+	show_title()
 
 func show_title() -> void:
 	pixel.reset()
 	pixel_panel.expanded = false
+	pixel_panel.title_mode = true
 	state = State.TITLE
 	board.visible = false
 	board.stage = null
@@ -393,9 +387,6 @@ func _panel(title: String, line_one: String, line_two: String) -> void:
 func _draw_title() -> void:
 	draw_rect(Rect2(0, 0, 400, 192), Art.LIGHT)
 	draw_rect(Rect2(18, 18, 364, 157), Art.INK, false, 2)
-	Art.text(self, "POCKET GAME", Vector2(30, 29), 1, Art.DARK)
-	Art.centered(self, "PIXEL", 59, 4)
-	for index in 7:
-		draw_rect(Rect2(125 + index * 20, 109 + (10 if index > 4 else 0), 15, 15), Art.INK if index == 0 else Art.DARK)
+	Art.centered(self, "RETROMANIA", 46, 4)
 	if fmod(clock, 1.1) < 0.85:
 		Art.centered(self, "BUTTON A START", 147, 2)

@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_frogger_initialization()
 	_test_frogger_motion()
 	_test_frogger_collision()
+	_test_frogger_reset()
 	_test_crossings()
 	_test_asteroids_initialization()
 	_test_asteroids_motion()
@@ -156,6 +157,9 @@ func _test_crossings() -> void:
 		for decision in 4000:
 			if stage.stopped:
 				break
+			if stage.needs_neutral or stage.reset_grace > 0.0:
+				stage.steer(Vector2i.ZERO)
+				stage.advance(0.25)
 			if _safe_up(stage):
 				var before: int = stage.crossings
 				stage.steer(Vector2i.UP)
@@ -168,6 +172,47 @@ func _test_crossings() -> void:
 		_check(events.score == objective * 100, "frogger score and objective progression agree, seed %d" % seed_value)
 		stage.advance(20.0)
 		_check(events.wins == 1 and events.score == objective * 100, "frogger completion emits only once")
+
+
+func _test_frogger_reset() -> void:
+	var stage := _frog(42, 3)
+	stage.steer(Vector2i.RIGHT)
+	stage.advance(0.15)
+	stage.player.y = 1
+	stage.steer(Vector2i.UP)
+	stage.advance(stage.FIXED_STEP)
+	_check(stage.crossings == 1 and stage.player.y == 11 and stage.needs_neutral, "non-final crossing requires neutral")
+	var lanes_before: Array = stage.lanes.duplicate(true)
+	for tick in 120:
+		stage.steer(Vector2i.UP)
+		stage.advance(stage.FIXED_STEP)
+	_check(stage.player.y == 11 and stage.reset_grace == 0.0, "held input stays on bank after grace expires")
+	_check(stage.lanes != lanes_before, "traffic continues during reset protection")
+	stage.steer(Vector2i.ZERO)
+	stage.steer(Vector2i.RIGHT)
+	stage.advance(stage.FIXED_STEP)
+	_check(stage.player.x == 13 and not stage.needs_neutral, "neutral rearms ordinary movement")
+	stage.player.y = 1
+	stage.advance(0.15)
+	stage.steer(Vector2i.UP)
+	stage.advance(stage.FIXED_STEP)
+	stage.steer(Vector2i.ZERO)
+	stage.steer(Vector2i.RIGHT)
+	stage.advance(29.0 * stage.FIXED_STEP)
+	_check(stage.player.x == 12 and stage.player.y == 11, "early neutral does not bypass quarter-second grace")
+	stage.steer(Vector2i.RIGHT)
+	stage.advance(stage.FIXED_STEP)
+	_check(stage.player.x == 12, "input during grace is not queued")
+	stage.steer(Vector2i.RIGHT)
+	stage.advance(stage.FIXED_STEP)
+	_check(stage.player.x == 13, "fresh input after both gates moves")
+	stage.player.y = 1
+	stage.advance(0.15)
+	stage.steer(Vector2i.UP)
+	stage.advance(stage.FIXED_STEP)
+	_check(stage.crossings == 3 and stage.stopped and not stage.needs_neutral, "final crossing completes without reset gate")
+	stage.initialize({}, {"target": 3})
+	_check(not stage.started and not stage.needs_neutral and stage.reset_grace == 0.0, "fresh stage preserves initial input behavior")
 
 
 func _test_asteroids_initialization() -> void:
@@ -332,6 +377,9 @@ func _test_unassisted_late_run() -> void:
 	for decision in 4000:
 		if frog.stopped:
 			break
+		if frog.needs_neutral or frog.reset_grace > 0.0:
+			frog.steer(Vector2i.ZERO)
+			frog.advance(0.25)
 		if _safe_up(frog):
 			frog.steer(Vector2i.UP)
 			frog.advance(0.15)

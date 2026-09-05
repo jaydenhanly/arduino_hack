@@ -1,6 +1,7 @@
 extends RefCounted
 
 const Fallbacks = preload("res://scripts/ai/pixel_fallbacks.gd")
+const Quality = preload("res://scripts/ai/pixel_quality.gd")
 const MAX_RAW_BYTES := 1024
 
 
@@ -18,7 +19,18 @@ static func valid_text(value: Variant, maximum: int) -> bool:
 	return true
 
 
-static func validate(raw: String, conversation: bool, candidates: Array[Dictionary]) -> Dictionary:
+static func validate(raw: String, conversation: bool, _candidates: Array[Dictionary] = []) -> Dictionary:
+	var reply := validate_structure(raw, conversation)
+	if reply.is_empty() or not Quality.findings(reply.message).is_empty():
+		return {}
+	if conversation:
+		for choice: String in reply.choices:
+			if not Quality.complete_message(choice):
+				return {}
+	return reply
+
+
+static func validate_structure(raw: String, conversation: bool) -> Dictionary:
 	if raw.to_utf8_buffer().size() > MAX_RAW_BYTES:
 		return {}
 	var parser := JSON.new()
@@ -40,35 +52,25 @@ static func validate(raw: String, conversation: bool, candidates: Array[Dictiona
 			if not valid_text(option, 32) or distinct.has(option.to_lower()):
 				return {}
 			distinct[option.to_lower()] = true
-	for candidate in candidates:
-		if reply == candidate:
-			return reply.duplicate(true)
-	return {}
+	return reply.duplicate(true)
 
 
-static func schema(conversation: bool, candidates: Array[Dictionary]) -> Dictionary:
-	if not conversation:
-		return {"type": "object", "additionalProperties": false,
+static func schema(conversation: bool, _candidates: Array[Dictionary] = []) -> Dictionary:
+	var result := {"type": "object", "additionalProperties": false,
 			"required": ["emotion", "message"], "properties": {
 				"emotion": {"type": "string", "enum": Fallbacks.EMOTIONS,
-					"description": "Pixel's reaction to the newest supplied gameplay event."},
+					"description": "Pixel's own mood."},
 				"message": {"type": "string", "minLength": 1, "maxLength": 80,
-					"pattern": "^[-A-Za-z0-9.,:/+!?>']([-A-Za-z0-9 .,:/+!?>']{0,78}[-A-Za-z0-9.,:/+!?>'])?$",
-					"description": "One original, grounded, single-line reaction. No surrounding spaces."},
+					"pattern": "^[A-Za-z0-9][-A-Za-z0-9 .,:/+!?>']{0,78}[.!?]$",
+					"description": "Original complete Pixel prose, one line, 1-80 characters, ending in . ! or ? No surrounding spaces or dangling sentence."},
 			}}
-	var variants: Array[Dictionary] = []
-	for candidate in candidates:
-		var properties := {
-			"emotion": {"type": "string", "enum": [candidate.emotion]},
-			"message": {"type": "string", "enum": [candidate.message]},
-		}
-		var required: Array[String] = ["emotion", "message"]
-		if conversation:
-			properties["choices"] = {"const": candidate.choices}
-			required.append("choices")
-		variants.append({"type": "object", "properties": properties,
-			"required": required, "additionalProperties": false})
-	return {"oneOf": variants}
+	if conversation:
+		result.required.append("choices")
+		result.properties.choices = {"type": "array", "minItems": 3, "maxItems": 3,
+			"items": {"type": "string", "minLength": 1, "maxLength": 32,
+				"pattern": "^[A-Za-z0-9][-A-Za-z0-9 .,:/+!?>']{0,30}[.!?]$"},
+			"description": "Exactly three distinct complete player replies to this turn, each 1-32 characters ending in . ! or ?. No menu actions."}
+	return result
 
 
 static func repeats_commentary(message: String, history: Array[Dictionary]) -> bool:

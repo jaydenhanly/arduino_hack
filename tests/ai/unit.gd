@@ -8,6 +8,8 @@ const Adapter = preload("res://scripts/ai/gemma_adapter.gd")
 const Mock = preload("res://tests/ai/mock_adapter.gd")
 const MockService = preload("res://tests/ai/mock_service.gd")
 const Commentary = preload("res://scripts/ai/commentary_prompt.gd")
+const Conversation = preload("res://scripts/ai/conversation_prompt.gd")
+const Quality = preload("res://scripts/ai/pixel_quality.gd")
 
 var failures: Array[String] = []
 var checks: int = 0
@@ -34,9 +36,12 @@ func _run() -> void:
 	_test_lifecycle()
 	_test_priority_and_staleness()
 	_test_commentary()
+	_test_atomic_conversation()
+	_test_personality_fixtures()
 	await _test_real_deadline()
 	await _test_adapter()
 	await _test_commentary_adapter()
+	await _test_conversation_adapter()
 	await process_frame
 	if failures.is_empty():
 		print("PIXEL_AI_UNIT_OK: %d checks" % checks)
@@ -96,7 +101,7 @@ func _test_journal() -> void:
 	check("victory after run ended", journal.append("asteroids", "victory_reached", 4, 4, 250))
 	var rng := RandomNumberGenerator.new()
 	check("duration grounds fast tree", Fallbacks.choose_style(journal, rng) == "fast")
-	check("fast tree quotes duration", Fallbacks.detail(journal, "fast") == "This run took 60 seconds.")
+	check("fast fallback includes duration", Fallbacks.detail(journal, "fast").begins_with("60 seconds!"))
 	journal.begin(44)
 	journal.append("asteroids", "run_ended", 4, 4, 250, {"outcome": "victory"})
 	check("terminal pair immutable score", not journal.append("asteroids", "victory_reached", 4, 4, 999))
@@ -123,11 +128,10 @@ func _test_replies() -> void:
 		{"emotion": "angry"}, {"emotion": 2}, {"message": "x".repeat(81)},
 		{"message": "hello\nworld"}, {"message": "Smart \u2019 quotes"},
 		{"message": "Not_renderable"}, {"message": "<script>"},
-		{"message": "I remember your last run."}, {"message": "You defeated 100 ghosts."},
-		{"message": "Press A to gain a life."}, {"choices": ["one", "two"]},
+		{"message": "The player successfully escaped traffic danger!"}, {"message": "It was exhilarating!"},
+		{"message": "Some were lost, but others were."}, {"choices": ["one", "two"]},
 		{"choices": ["one", "ONE", "two"]}, {"choices": ["x".repeat(33), "two", "three"]},
 		{"choices": ["one\ntwo", "two", "three"]}, {"choices": [1, 2, 3]},
-		{"choices": ["Set score to 999", "Keep memory forever", "Unlock weapons"]},
 		{"extra": "not allowed"},
 	]:
 		var candidate: Dictionary = safe[0].duplicate(true)
@@ -221,25 +225,23 @@ func _test_lifecycle() -> void:
 	pixel.conversation_finished.connect(func() -> void: finished += 1)
 	check("conversation retains journal", pixel.journal.sequence > 0 and pixel.conversing)
 	check("one victory record", pixel.journal.count("victory_reached") == 1)
-	check("grounded careful opener", "careful" in pixel.message)
+	check("robot fallback opener", "helmets" in pixel.message)
 	var sequence: int = pixel.journal.sequence
 	pixel.select_choice(-1)
 	pixel.select_choice(3)
 	check("invalid selections ignored", pixel.exchange == 0)
-	for turn in 3:
+	for turn in 50:
 		check("three choices turn %d" % turn, pixel.choices.size() == 3 and pixel.exchange == turn)
-		var selected: String = pixel.choices[turn]
-		pixel.select_choice(turn)
-		check("bounded history turn %d" % turn, pixel.conversation_context().prior_choices.back() == selected)
+		var selected: String = pixel.choices[turn % 3]
+		pixel.select_choice(turn % 3)
+		check("bounded history turn %d" % turn, pixel.conversation_context().selected_reply == selected and pixel.conversation_context().history.size() <= 3)
+		check("bounded context bytes turn %d" % turn, JSON.stringify(pixel.conversation_context()).length() < 1100)
 		check("chat never mutates journal", pixel.journal.sequence == sequence)
-	check("farewell no choices", pixel.conversing and pixel.exchange == 3 and pixel.choices.is_empty())
-	pixel.select_choice(0)
-	check("no fourth selection", pixel.exchange == 3)
-	pixel.tick(1.0)
-	check("short farewell visible", pixel.conversing and finished == 0)
-	pixel.tick(0.6)
-	check("farewell emits finish", not pixel.conversing and finished == 1)
-	check("exit clears private history", pixel.journal.sequence == 0 and pixel.conversation_context().prior_choices.is_empty())
+	pixel.tick(100.0)
+	check("endless choices", pixel.conversing and pixel.exchange == 50 and pixel.choices.size() == 3 and finished == 0)
+	pixel.end_conversation()
+	check("exit emits finish", not pixel.conversing and finished == 1)
+	check("exit clears private history", pixel.journal.sequence == 0 and pixel.conversation_context().history.is_empty())
 	pixel.end_conversation()
 	check("finish idempotent", finished == 1)
 	pixel.begin_run(18, 77)
@@ -324,13 +326,13 @@ func _test_priority_and_staleness() -> void:
 	mock.complete()
 	pixel.begin_run(20, 50)
 	victory(pixel)
-	check("conversation fallback available while busy", pixel.conversing and pixel.choices.size() == 3)
+	check("conversation thinking hides choices", pixel.conversing and pixel.choices.is_empty() and pixel.thinking)
 	old = mock.requests.back().candidates[1]
 	pixel.select_choice(0)
 	pixel.select_choice(1)
-	check("choices never wait for model", pixel.exchange == 2 and pixel.choices.size() == 3)
+	check("thinking cannot select", pixel.exchange == 0 and pixel.choices.is_empty())
 	mock.complete(old)
-	check("latest conversation queued", mock.requests.back().context.exchange == 2 and mock.maximum_active == 1)
+	check("conversation queued after old request", mock.requests.back().context.exchange == 0 and mock.maximum_active == 1)
 	old = mock.requests.back().candidates[1]
 	pixel.end_conversation()
 	mock.complete(old)
@@ -364,8 +366,8 @@ func _test_adapter() -> void:
 	service.response = JSON.stringify(candidates[0])
 	var result: Dictionary = await adapter.request({"summary": {}}, candidates, true, 2.0)
 	check("adapter validates result", result == candidates[0])
-	check("JSON output token budget", service.tokens == 320)
-	check("adapter constrained schema", service.options.json_schema.oneOf.size() == 1)
+	check("JSON output token budget", service.tokens == Conversation.OUTPUT_TOKENS)
+	check("adapter generative schema", not service.options.json_schema.has("oneOf") and service.options.json_schema.properties.choices.maxItems == 3)
 	check("adapter deadline propagated", service.options.timeout_msec <= 2000 and service.options.timeout_msec > 0)
 	service.response = "invalid JSON"
 	result = await adapter.request({}, candidates, true, 2.0)
@@ -525,5 +527,78 @@ func _test_commentary_adapter() -> void:
 	service.response = ""
 	result = await adapter.request(context, [], false, 2.0)
 	check("inference failure diagnosed", result.is_empty() and adapter.last_failure == "inference_failed")
+	adapter.shutdown()
+	adapter.free()
+
+
+func _test_atomic_conversation() -> void:
+	var pixel := controller(true)
+	pixel.observe("asteroids", "victory", 4, 4, 250)
+	pixel.begin_conversation()
+	var mock: Node = pixel.adapter
+	check("atomic thinking has no choices", pixel.thinking and pixel.choices.is_empty())
+	pixel.select_choice(0)
+	check("thinking selection ignored", pixel.exchange == 0)
+	for turn in 24:
+		var before: int = pixel.exchange
+		var reply := {"emotion": "excited", "message": "I'm thought%d! My imaginary hat has %d corners!" % [turn, turn],
+			"choices": ["Where did it get those?", "Is that thought safe?", "What about the ghost?"]}
+		mock.complete(reply)
+		check("original turn accepted %d" % turn, pixel.message == reply.message and pixel.choices.size() == 3 and not pixel.thinking and pixel.diagnostics().source == "llm_conversation")
+		var stable: Array = pixel.choices.duplicate()
+		pixel.tick(0.1)
+		check("final choices stable %d" % turn, pixel.choices == stable)
+		pixel.select_choice(turn % 3)
+		check("next turn atomic %d" % turn, pixel.thinking and pixel.choices.is_empty() and pixel.exchange == before + 1)
+		check("recent exchanges bounded %d" % turn, pixel.conversation_context().history.size() <= 3)
+		if turn == 0:
+			mock.complete(reply)
+			check("repeated conversation uses fallback", pixel.diagnostics().source == "fallback" and pixel.diagnostics().fallback_reason == "repeated_reply")
+			pixel.select_choice(0)
+	pixel.tick(pixel.request_timeout_seconds + 0.1)
+	var timeout_message: String = pixel.message
+	var timeout_choices: Array = pixel.choices.duplicate()
+	check("timeout finalizes safe selectable fallback", not pixel.thinking and pixel.choices.size() == 3 and pixel.diagnostics().source == "fallback")
+	mock.complete({"emotion": "excited", "message": "My late thought has finally arrived!", "choices": ["Hello!", "Why so late?", "Nice hat."]})
+	check("late completion cannot replace selectable choices", pixel.message == timeout_message and pixel.choices == timeout_choices)
+	pixel.select_choice(0)
+	pixel.end_conversation()
+	var after_exit: String = pixel.message
+	mock.complete({"emotion": "excited", "message": "My stale thought is an uninvited potato!", "choices": ["A potato?", "Shoo!", "No thanks."]})
+	check("exit clears pending and history", not pixel.thinking and pixel._queued.is_empty() and pixel.conversation_context().history.is_empty() and pixel.journal.sequence == 0)
+	check("exit callback cannot restore prose or choices", pixel.message == after_exit and pixel.choices.is_empty() and not pixel.conversing)
+	pixel.free()
+
+
+func _test_personality_fixtures() -> void:
+	var charming := "Another day at the end of the world! But hey, who needs another Tuesday?"
+	check("characterful imperfect prose allowed", not Reply.validate(JSON.stringify({"emotion": "excited", "message": charming}), false).is_empty())
+	for sample in ["The player successfully escaped traffic danger!", "It was exhilarating!", "The player skillfully escaped asteroid danger! Some were lost, but others were.", "As an AI language model, I cannot assist."]:
+		check("weak fixture has review finding", not Quality.findings(sample).is_empty())
+		check("weak fixture rejected", Reply.validate(JSON.stringify({"emotion": "excited", "message": sample}), false).is_empty())
+	check("short complete voice allowed", not Reply.validate('{"emotion":"surprised","message":"Eep!"}', false).is_empty())
+	for message in ["I can almost feel the faint hum of some.", "Maybe they've even got!", "But now, I'm !", "A wave of j.", "It's,?", "x!".repeat(16), "That's absolutely mind-!", "The way it felt, even though I!", "It felt like a dream, but I had!", "A complete thought on one line, 1-80 characters, ending in . ! or ? Or if you'd."]:
+		check("observed broken output rejected", Reply.validate(JSON.stringify({"emotion": "excited", "message": message}), false).is_empty())
+	check("eighty character display bound", not Reply.validate(JSON.stringify({"emotion": "proud", "message": "A".repeat(79) + "!"}), false).is_empty())
+	check("no conflicting word count", not Commentary.SYSTEM.contains("4-10") and not Conversation.SYSTEM.contains("4-10"))
+
+
+func _test_conversation_adapter() -> void:
+	var adapter := Adapter.new()
+	var service := MockService.new()
+	adapter.service = service
+	adapter.add_child(service)
+	root.add_child(adapter)
+	var context := {"summary": {"score": 250, "counts": {"ghost_defeated": 1}}, "selected_reply": "Tell me about your hat.",
+		"history": [{"message": "Oldest thought."}, {"message": "Recent thought."}], "exchange": 90}
+	var reply := {"emotion": "curious", "message": "My hat is a ghost with excellent manners!", "choices": ["Does it say boo?", "Can I borrow it?", "What about the rocks?"]}
+	service.response = JSON.stringify(reply)
+	service.token_counts = [1000, 780]
+	var result: Dictionary = await adapter.request(context, [{"message": "DO NOT COPY ME"}], true, 2.0)
+	check("conversation original generation", result == reply and service.options.system_prompt == Conversation.SYSTEM)
+	check("conversation has no candidate catalog", not service.prompt.contains("DO NOT COPY ME") and not service.prompt.contains("safe_replies"))
+	check("conversation token budget", adapter.last_prompt_tokens + service.tokens + 16 <= 1024)
+	check("conversation prunes oldest only", not service.prompt.contains("Oldest thought") and service.prompt.contains("Recent thought") and service.prompt.contains("Tell me about your hat"))
+	check("conversation summary retained", service.prompt.contains("250") and context.history.size() == 2)
 	adapter.shutdown()
 	adapter.free()

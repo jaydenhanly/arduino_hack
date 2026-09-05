@@ -33,22 +33,25 @@ network, audio, haptics, or external display output is required to understand pl
 - One life. A fatal collision ends the run; replay begins again at Snake.
 - Snake wraps screen edges, rejects reversal, grows and speeds up with apples.
 - Maze movement has buffered turns. The head loses to a ghost, the tail defeats
-  it. Ghosts respawn at safe, warned edge positions. Pellets, not ghost kills,
+  it. The authored 24x12 maze has a central ghost area and one horizontal tunnel.
+  Ghosts respawn at safe, warned central positions. Pellets, not ghost kills,
   advance the objective.
 - Crossing lanes have seeded traffic with safe waiting rows. Each successful
-  crossing returns the player to a safe start.
+  non-final crossing returns the player to a safe start, with a 0.25-second
+  movement grace and neutral-input rearm. Traffic continues moving.
 - Space movement has acceleration, inertia, a speed cap, wrapping, and shooting.
   New rocks are telegraphed before becoming dangerous.
 - Each stage waits for the first relevant input before hazards advance.
 - Three-second blink/glitch transformations preserve selected objects and the
-  player. Score persists. Gameplay rules replace each other rather than stack.
-- Victory freezes the final scene. Pixel offers three responses per turn, for at
-  most three player selections, then a farewell and replay. Button B skips.
+  player identity. Maze relocates the body to its authored nine-cell entrance.
+  Score persists. Gameplay rules replace each other rather than stack.
+- Victory freezes the final scene. Pixel offers three responses per turn until
+  the player exits. Button B returns directly to the title, including while thinking.
 
 | Internal stage | Normal target | Demo target |
 | --- | ---: | ---: |
 | Snake apples | 10 | 3 |
-| Maze pellets | 30 | 10 |
+| Maze pellets | 97 | 10 |
 | Crossings | 3 | 1 |
 | Asteroid destructions | 12 | 4 |
 
@@ -83,13 +86,15 @@ fallback record only after generation passes validation and freshness checks.
 Recent repeated phrases are rejected. The prompt and chat-template token count
 must fit the 1024-token runtime context with space reserved for output.
 
-Post-victory dialogue remains model-selected from authored candidates, with
-unchanged choices. Generative commentary does not have that semantic guarantee:
-the 270M model sometimes confuses old and current events despite valid JSON.
+Post-victory dialogue generates an original message and three distinct responses.
+Each turn shows a thinking state, then atomically reveals generated dialogue or
+fallback. Selectable choices never change. Only three recent exchanges remain
+in context. Pixel's voice favors excitable robot reactions over factual narration;
+the 270M model still produces bland or broken replies despite valid JSON.
 See `docs/pixel-commentary.md` for the contract, diagnostics and quality limits.
 In development, F1 shows the displayed message source and fallback reason.
 `pixel.diagnostics()` exposes request latency, event sequence and acceptance
-counts; `llm` means generated commentary and `llm_selected` means authored dialogue.
+counts; sources are `llm`, `llm_conversation`, `fallback`, and `authored`.
 
 The existing Gemma 3 270M GGUF and `llama-server` remain the only model runtime.
 The server binds to `127.0.0.1`. There is no Ollama or cloud fallback.
@@ -152,43 +157,18 @@ The bundle is `build/game-linux-arm64.zip`. Model weights and native libraries
 live beside the executable under `llm/`, outside the PCK. Exporting a ZIP is not
 proof that it runs on the board.
 
-`scripts/controller/` isolates every Uno Q hardware concern from gameplay code,
-so `game_flow.gd` only ever calls a small, hardware-agnostic API:
+`scripts/controller/` retains the isolated joystick and button input modules.
+Its feedback entry point delegates to the versioned semantic implementation.
+The older vibration/light helpers and UDP transport remain available, but are
+not wired into the current game feedback path.
 
-- `joystick_input.gd` registers the four movement actions (keyboard, D-pad,
-  analog stick) and resolves them to a direction (`direction_for`, for
-  discrete input) or a continuous vector (`vector`, for polled movement).
-- `button_input.gd` registers the three face buttons (and their keyboard
-  equivalents) as confirm/cancel/pause/shoot. Kept separate from the joystick
-  so installing one can never leak the other's bindings.
-- `vibration_controller.gd` sizes and rate-limits the vibration-motor pulse
-  for a gameplay cue (`collect`, `danger`, `transform`, `death`, `victory`,
-  `checkpoint`).
-- `light_controller.gd` builds the blue 13x8 LED-matrix frame for the same
-  cues, plus `comment`, clamping the bottom progress row to [0, 1].
-- `hardware_feedback.gd` is the single node `game_flow.gd` calls
-  (`emit_feedback(kind, progress)`, `advance(delta)`); it just coordinates the
-  vibration and light controllers above and keeps their combined event
-  history (`last_event`, `recent_events`, `feedback_requested`).
-- `vibration_transport.gd` is `hardware_feedback.gd`'s `transport` Callable —
-  the only piece that reaches real hardware. It POSTs `{"ms": pulse_ms}` to
-  `/api/vibrate` on the board's bridge, an endpoint the board's install step
-  patches in specifically for this game (see
-  `~/summer-uno-q/board/install-game.sh`) so its own objective events drive
-  the buzz instead of the bridge's generic per-keypress click. Which loopback
-  address actually reaches that separate, persistent bridge container from
-  inside this game's own App Lab container isn't settled by anything in this
-  repo, so it fires at both `127.0.0.1` and `172.17.0.1` (the bridge's own HID
-  injector reaches the host via the latter, its Docker bridge gateway) —
-  whichever is unreachable fails silently. Failures log to
-  `vibrate-debug.log` next to the game directory (host-visible) so a mismatch
-  is diagnosable on the board.
-
-The vibration pulse reaches real hardware through the transport above; the
-LED matrix does not — its desktop mock is tested (see `tests/hardware/`
-below) but the supplied kit exposes no game-facing matrix RPC. No board
-scripts are modified to work around that boundary. Gameplay remains readable
-without either adapter.
+`HardwareFeedback` emits rate-limited light-pulse requests and blue 13x8 matrix
+frames through an optional bounded local socket transport. Its desktop mock is
+tested. **Physical feedback is not connected or verified.** The current scope
+allows project-local work only. Earlier shared-kit edits are frozen and inventoried
+in `docs/shared-kit-frozen.md`, not approved deployment work. See
+`docs/hardware-feedback.md` for the protocol and remaining physical checks.
+Gameplay remains readable without the adapter.
 
 Physical deployment must follow `/Users/j/summer-uno-q/SKILL.md` and its `board/`
 scripts exactly. The app name and icon must be confirmed for each deployment.
