@@ -5,6 +5,7 @@ signal life_lost(reason: String)
 signal objective_completed
 signal journal_event(kind: String, tags: Dictionary)
 
+const Art = preload("res://scripts/pixel_art.gd")
 const FIELD := Rect2(12, 32, 376, 156)
 const GRID_SIZE := Vector2i(24, 12)
 const CELL := 12.0
@@ -229,43 +230,45 @@ func snapshot() -> Dictionary:
 
 
 func draw_stage(canvas: Node2D, clock: float) -> void:
-	canvas.draw_rect(FIELD, Color("152d36"))
+	canvas.draw_rect(FIELD, Art.map_tone(Color("152d36")))
 	for row in GRID_SIZE.y:
 		var safe: bool = row in SAFE_ROWS
 		var row_rect := Rect2(ORIGIN + Vector2(0, row * CELL), Vector2(ROAD_WIDTH, CELL))
-		canvas.draw_rect(row_rect, Color("315d4f") if safe else Color("263d50"))
+		canvas.draw_rect(row_rect, Art.map_tone(Color("315d4f") if safe else Color("263d50")))
 		if safe:
 			for column in range(0, 24, 2):
 				var grass := ORIGIN + Vector2(column * CELL + 3, row * CELL + 7)
-				_pixel(canvas, Rect2(grass, Vector2(2, 2)), Color("4b8065"))
-				_pixel(canvas, Rect2(grass + Vector2(3, -2), Vector2(2, 3)), Color("3e7258"))
+				_pixel(canvas, Rect2(grass, Vector2(2, 2)), Art.map_tone(Color("4b8065")))
+				_pixel(canvas, Rect2(grass + Vector2(3, -2), Vector2(2, 3)), Art.map_tone(Color("3e7258")))
 		else:
 			for stripe in 12:
-				_pixel(canvas, Rect2(ORIGIN + Vector2(stripe * 24 + 4, row * CELL), Vector2(10, 1)), Color("638079"))
+				_pixel(canvas, Rect2(ORIGIN + Vector2(stripe * 24 + 4, row * CELL), Vector2(10, 1)), Art.map_tone(Color("638079")))
 	for lane in lanes:
 		for rectangle in lane_rects(lane):
-			var color: Color = CAR_COLORS[int(lane.color)]
+			var color: Color = Art.map_tone(CAR_COLORS[int(lane.color)])
 			_pixel(canvas, rectangle, color.darkened(0.25))
 			_pixel(canvas, Rect2(rectangle.position + Vector2(1, 2), rectangle.size - Vector2(2, 4)), color)
 			if rectangle.size.x >= 12:
 				var cab_x: float = rectangle.end.x - 8 if int(lane.direction) > 0 else rectangle.position.x + 3
-				_pixel(canvas, Rect2(cab_x, rectangle.position.y + 2, 4, 6), Color("263d50"))
-				_pixel(canvas, Rect2(rectangle.position + Vector2(3, 0), Vector2(4, 1)), Color("101f30"))
-				_pixel(canvas, Rect2(rectangle.position + Vector2(3, 9), Vector2(4, 1)), Color("101f30"))
+				_pixel(canvas, Rect2(cab_x, rectangle.position.y + 2, 4, 6), Art.map_tone(Color("263d50")))
+				_pixel(canvas, Rect2(rectangle.position + Vector2(3, 0), Vector2(4, 1)), Art.map_tone(Color("101f30")))
+				_pixel(canvas, Rect2(rectangle.position + Vector2(3, 9), Vector2(4, 1)), Art.map_tone(Color("101f30")))
 		var marker_y: float = ORIGIN.y + int(lane.row) * CELL + 5
 		var pulse: float = 0.6 + 0.4 * sin(clock * 3.0 + int(lane.row))
 		for chevron in 3:
 			var marker_x: float = 38 + chevron * 3 * int(lane.direction)
-			_pixel(canvas, Rect2(marker_x, marker_y + absi(chevron - 1), 2, 2), Color("f6ad55").darkened(pulse * 0.3))
+			_pixel(canvas, Rect2(marker_x, marker_y + absi(chevron - 1), 2, 2), Art.map_tone(Color("f6ad55").darkened(pulse * 0.3)))
 	for column in 24:
-		_pixel(canvas, Rect2(ORIGIN.x + column * CELL, ORIGIN.y, CELL - 1, 2), Color("cce89a") if column % 2 == 0 else Color("79aa7c"))
+		_pixel(canvas, Rect2(ORIGIN.x + column * CELL, ORIGIN.y, CELL - 1, 2), Art.map_tone(Color("cce89a") if column % 2 == 0 else Color("79aa7c")))
 	for bank_x in [18, 352, 374]:
 		for leaf in 7:
 			var leaf_y: float = 40 + leaf * 21
 			var sway: float = floor(sin(clock * 1.5 + leaf) * 2)
-			_pixel(canvas, Rect2(bank_x + sway, leaf_y, 5, 4), Color("41705a"))
-			_pixel(canvas, Rect2(bank_x + 2, leaf_y + 4, 2, 5), Color("295341"))
+			_pixel(canvas, Rect2(bank_x + sway, leaf_y, 5, 4), Art.map_tone(Color("41705a")))
+			_pixel(canvas, Rect2(bank_x + 2, leaf_y + 4, 2, 5), Art.map_tone(Color("295341")))
 	var center := get_player_position().floor()
+	# Everything below is the frog itself (plus its landing pad shadow) — the
+	# player, not the map, so its colors are fixed and never invert.
 	_pixel(canvas, Rect2(center - Vector2(5, 3), Vector2(10, 8)), Color("132e35"))
 	var frog_color := Color("dcf5a2") if hop_flash > 0.0 else Color("9ede82")
 	_pixel(canvas, Rect2(center - Vector2(3, 3), Vector2(6, 7)), frog_color)

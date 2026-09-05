@@ -1,9 +1,11 @@
 extends Node
-## Reads ambient lux from the Uno Q's Modulino Light sensor and fades the game's
-## palette between light mode (dark ink on green) and dark mode (green ink on
-## black) to match the room. The bridge running alongside the game on the board
-## writes the latest reading to STATE_PATH; off the board that file never
-## appears, so the game just stays in light mode.
+## Reads ambient lux from the Uno Q's Modulino Light sensor and fades the
+## game's palette between light mode (dark ink on green) and dark mode (green
+## ink on black) to match the room. The fade is quick (TRANSITION_SECONDS)
+## rather than instant, so a reading right at the light/dark boundary doesn't
+## flicker the whole screen. The bridge running alongside the game on the
+## board writes the latest reading to STATE_PATH; off the board that file
+## never appears, so the game just stays in light mode.
 
 const Art = preload("res://scripts/pixel_art.gd")
 
@@ -11,8 +13,9 @@ const STATE_PATH := "/game/light_state.json"
 const POLL_INTERVAL := 0.5
 # Lux thresholds bracketing the transition; tune against the actual sensor on the board.
 const LUX_DARK := 15.0
-const LUX_LIGHT := 250.0
-const FADE_PER_SECOND := 0.5
+const LUX_LIGHT := 100.0
+const TRANSITION_SECONDS := 0.1
+const FADE_PER_SECOND := 1.0 / TRANSITION_SECONDS
 
 var _poll_elapsed := 0.0
 var _target_t := 0.0

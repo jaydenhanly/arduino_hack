@@ -5,6 +5,7 @@ signal life_lost(reason: String)
 signal objective_completed
 signal journal_event(kind: String, tags: Dictionary)
 
+const Art = preload("res://scripts/pixel_art.gd")
 const FIELD := Rect2(12, 32, 376, 156)
 const FIXED_STEP := 1.0 / 120.0
 const ACCELERATION := 155.0
@@ -301,21 +302,24 @@ func snapshot() -> Dictionary:
 
 
 func draw_stage(canvas: Node2D, clock: float) -> void:
-	canvas.draw_rect(FIELD, Color("10182f"))
+	canvas.draw_rect(FIELD, Art.map_tone(Color("10182f")))
 	for band in 13:
-		_pixel(canvas, Rect2(12, 32 + band * 12, 376, 6), Color("151d38") if band % 2 == 0 else Color("131b32"))
+		_pixel(canvas, Rect2(12, 32 + band * 12, 376, 6), Art.map_tone(Color("151d38") if band % 2 == 0 else Color("131b32")))
 	for star in stars:
 		var layer: int = star.layer
 		var star_position := _wrap(Vector2(star.position) + Vector2(-elapsed * (layer + 1) * 2.0, elapsed * (layer + 1) * 0.6)).floor()
 		var star_color := Color("426280") if layer == 0 else Color("7a88b8")
 		if layer == 2:
 			star_color = Color("b5decd") if sin(clock * 2 + star_position.x) > 0.3 else Color("7d8eac")
-		_pixel(canvas, Rect2(star_position, Vector2.ONE * (2 if layer == 2 else 1)), star_color)
+		_pixel(canvas, Rect2(star_position, Vector2.ONE * (2 if layer == 2 else 1)), Art.map_tone(star_color))
 	for asteroid in asteroids:
 		if float(asteroid.warning) > 0.0:
 			_draw_warning(canvas, asteroid, clock)
 		else:
 			_draw_rock(canvas, asteroid)
+	# Particles and bullet trails are fired by, or explode out of, the player
+	# ship/asteroids at the instant of impact — kept fixed like the ship below
+	# rather than threading map/player provenance through each transient particle.
 	for particle in particles:
 		var color: Color = particle.color
 		color.a = minf(1.0, float(particle.ttl) * 3.0)
@@ -327,7 +331,7 @@ func draw_stage(canvas: Node2D, clock: float) -> void:
 			_wrapped_pixel(canvas, Rect2(trail_position - Vector2.ONE, Vector2(2, 2)), Color("fff4c4") if trail_index == 0 else Color("f6af69").darkened(trail_index * 0.15))
 	_draw_ship(canvas)
 	if impact_flash > 0.0:
-		var flash_color := Color("b9a2e9")
+		var flash_color := Art.map_tone(Color("b9a2e9"))
 		flash_color.a = impact_flash * 2.0
 		_pixel(canvas, Rect2(12, 32, 376, 2), flash_color)
 		_pixel(canvas, Rect2(12, 186, 376, 2), flash_color)
@@ -336,7 +340,7 @@ func draw_stage(canvas: Node2D, clock: float) -> void:
 func _draw_rock(canvas: Node2D, asteroid: Dictionary) -> void:
 	var radius: float = asteroid.radius
 	var extent: int = int(ceil(radius / 2.0))
-	var base_color: Color = ROCK_COLORS[int(asteroid.color)]
+	var base_color: Color = Art.map_tone(ROCK_COLORS[int(asteroid.color)])
 	for row in range(-extent, extent + 1):
 		for column in range(-extent, extent + 1):
 			var offset := Vector2(column * 2, row * 2)
@@ -355,7 +359,7 @@ func _draw_rock(canvas: Node2D, asteroid: Dictionary) -> void:
 func _draw_warning(canvas: Node2D, asteroid: Dictionary, clock: float) -> void:
 	var center := Vector2(asteroid.position).floor()
 	var radius: float = float(asteroid.radius) + 4
-	var color := Color("f7bb76") if int(clock * 8) % 2 == 0 else Color("875581")
+	var color := Art.map_tone(Color("f7bb76") if int(clock * 8) % 2 == 0 else Color("875581"))
 	for side in [-1, 1]:
 		_wrapped_pixel(canvas, Rect2(center + Vector2(side * radius, -4), Vector2(2, 8)), color)
 		_wrapped_pixel(canvas, Rect2(center + Vector2(-4, side * radius), Vector2(8, 2)), color)

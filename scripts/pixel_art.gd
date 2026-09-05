@@ -70,6 +70,16 @@ static func base_palette() -> Dictionary:
 		return {"light": CPH.cream, "mid": CPH.stone, "dark": CPH.copper_dark, "ink": CPH.ink}
 	return GREEN
 
+## Blends a map/UI color toward its own brightness-inverted counterpart (hue
+## and saturation kept, value flipped) by the current light_level. A value
+## flip is a reflection, not a fade to black, so the contrast between any two
+## map_tone()'d colors is preserved at every light_level rather than crushed.
+## Player-identity colors (the snake, the frog, the ship, the apple) are
+## deliberately never routed through this — only the surrounding map/UI is.
+static func map_tone(base_color: Color) -> Color:
+	var inverted := Color.from_hsv(base_color.h, base_color.s, 1.0 - base_color.v, base_color.a)
+	return base_color.lerp(inverted, light_level)
+
 static func _apply_palette() -> void:
 	var base := base_palette()
 	LIGHT = base.light.lerp(base.ink, light_level)
