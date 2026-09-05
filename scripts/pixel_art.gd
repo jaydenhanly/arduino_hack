@@ -1,11 +1,14 @@
 extends RefCounted
 
-# The four working tones. Every renderer reads these; set_theme() swaps them.
+# The four working tones. Every renderer reads these. set_theme() picks the base
+# palette; apply_light_level() blends it toward its dark variant (light and ink
+# swapped) so the game reads as light ink on a dark screen in a dark room.
 static var LIGHT := Color("9bbc0f")
 static var MID := Color("8bac0f")
 static var DARK := Color("306230")
 static var INK := Color("0f380f")
 static var theme := "green"
+static var light_level := 0.0
 
 const THEMES: Array[String] = ["green", "copenhagen"]
 const GREEN := {"light": Color("9bbc0f"), "mid": Color("8bac0f"), "dark": Color("306230"), "ink": Color("0f380f")}
@@ -48,17 +51,7 @@ const MUSHROOM := ["00111100", "01111110", "11111111", "11111111", "00011000", "
 
 static func set_theme(name: String) -> void:
 	theme = name if name in THEMES else "green"
-	if theme == "copenhagen":
-		LIGHT = CPH.cream
-		MID = CPH.stone
-		DARK = CPH.copper_dark
-		INK = CPH.ink
-	else:
-		LIGHT = GREEN.light
-		MID = GREEN.mid
-		DARK = GREEN.dark
-		INK = GREEN.ink
-	RenderingServer.set_default_clear_color(LIGHT)
+	_apply_palette()
 
 static func next_theme() -> void:
 	set_theme(THEMES[(THEMES.find(theme) + 1) % THEMES.size()])
@@ -66,8 +59,30 @@ static func next_theme() -> void:
 static func cph() -> bool:
 	return theme == "copenhagen"
 
-static func text(canvas: CanvasItem, value: String, origin: Vector2, scale_value: int = 1, color: Color = Color.TRANSPARENT) -> void:
-	if color == Color.TRANSPARENT:
+## t=0 is full light mode, t=1 is full dark mode; anything between is a blend of the two.
+static func apply_light_level(t: float) -> void:
+	light_level = clampf(t, 0.0, 1.0)
+	_apply_palette()
+
+static func base_palette() -> Dictionary:
+	if theme == "copenhagen":
+		return {"light": CPH.cream, "mid": CPH.stone, "dark": CPH.copper_dark, "ink": CPH.ink}
+	return GREEN
+
+static func _apply_palette() -> void:
+	var base := base_palette()
+	LIGHT = base.light.lerp(base.ink, light_level)
+	MID = base.mid.lerp(base.dark, light_level)
+	DARK = base.dark.lerp(base.mid, light_level)
+	INK = base.ink.lerp(base.light, light_level)
+	RenderingServer.set_default_clear_color(LIGHT)
+
+# Default params must be constant, but INK now changes with the theme. This sentinel
+# (an alpha no real colour has) means "use whatever INK currently is" at call time.
+const _DEFAULT_INK := Color(-1.0, -1.0, -1.0, -1.0)
+
+static func text(canvas: CanvasItem, value: String, origin: Vector2, scale_value: int = 1, color: Color = _DEFAULT_INK) -> void:
+	if color == _DEFAULT_INK:
 		color = INK
 	var cursor := origin.round()
 	for letter in value.to_upper():
@@ -75,7 +90,7 @@ static func text(canvas: CanvasItem, value: String, origin: Vector2, scale_value
 			bitmap(canvas, GLYPHS[letter].split("/"), cursor, scale_value, color)
 		cursor.x += 6 * scale_value
 
-static func centered(canvas: CanvasItem, value: String, top: float, scale_value: int = 1, color: Color = Color.TRANSPARENT) -> void:
+static func centered(canvas: CanvasItem, value: String, top: float, scale_value: int = 1, color: Color = _DEFAULT_INK) -> void:
 	text(canvas, value, Vector2((400 - (value.length() * 6 - 1) * scale_value) / 2.0, top), scale_value, color)
 
 static func bitmap(canvas: CanvasItem, rows: Variant, origin: Vector2, scale_value: int, color: Color) -> void:

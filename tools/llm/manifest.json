@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "model": {
+    "name": "Gemma 3 270M Instruct",
+    "file": "models/gemma-3-270m-it-Q4_K_M.gguf",
+    "format": "GGUF Q4_K_M",
+    "source": "https://huggingface.co/unsloth/gemma-3-270m-it-GGUF",
+    "revision": "c90975dbd40c0c7b275fefaae758c3415c906238",
+    "sha256": "b1baabd6b729e4041822220d3e648e00d99cac5df86b10dffb77bcccf0688e39",
+    "license": "gemma"
+  },
+  "runtime": {
+    "name": "llama.cpp",
+    "version": "b10819",
+    "source": "https://github.com/ggml-org/llama.cpp"
+  },
+  "runtimes": {
+    "macos-arm64": "runtimes/macos-arm64/llama-server",
+    "linux-arm64": "runtimes/linux-arm64/llama-server"
+  }
+}
