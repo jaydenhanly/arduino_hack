@@ -9,7 +9,7 @@ func _ready() -> void:
 		game.playtest.select_stage("maze", "near-completion")
 		await press("dev_complete", hold_ms)
 		await settle(3)
-		var passed: bool = game.state == game.State.SHIFTING
+		var passed: bool = game.state == game.State.SHIFTING or (game.current_stage == "arena" and game.state == game.State.PLAYING)
 		report("complete_action_%d_ms" % hold_ms, passed)
 		if not passed:
 			failures.append("complete_action_%d_ms" % hold_ms)

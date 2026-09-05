@@ -19,7 +19,7 @@ func _ready() -> void:
 	save_frame("01_title")
 	await press("confirm", 20)
 	check("one_initial_pixel", game.stage.body.size() == 1)
-	check("three_lives", game.lives == 3)
+	check("five_lives", game.lives == 5)
 	await settle()
 	save_frame("02_first_pixel")
 	await press("move_right", 30)
@@ -48,30 +48,38 @@ func _ready() -> void:
 		var start: Vector2i = snake.body[0]
 		snake.step()
 		check("movement_%s" % heading, snake.body[0] == start + heading)
-	for collision in ["wall", "body", "obstacle"]:
+	var wrap_snake := Snake.new()
+	wrap_snake.initialize(2026)
+	wrap_snake.body.assign([Vector2i(Grid.SIZE.x - 1, 6), Vector2i(Grid.SIZE.x - 2, 6), Vector2i(Grid.SIZE.x - 3, 6)])
+	wrap_snake.steer(Vector2i.RIGHT)
+	wrap_snake.step()
+	check("boundary_loops_right_to_left", wrap_snake.body[0] == Vector2i(0, 6) and not wrap_snake.stopped)
+	for collision in ["body", "wall", "spider"]:
 		game.start_run()
 		game.score = 30
 		var snake: RefCounted = game.stage
 		snake.steer(Vector2i.RIGHT)
-		if collision == "wall":
-			snake.body.assign([Vector2i(23, 6), Vector2i(22, 6), Vector2i(21, 6)])
-		elif collision == "body":
+		if collision == "body":
 			snake.body.assign([Vector2i(6, 6), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6), Vector2i(8, 6)])
+		elif collision == "wall":
+			snake.body.assign([Vector2i(6, 6), Vector2i(5, 6), Vector2i(4, 6)])
+			snake.walls.assign([Vector2i(7, 6)])
 		else:
-			snake.body.assign([Vector2i(16, 5), Vector2i(15, 5), Vector2i(14, 5)])
+			snake.body.assign([Vector2i(6, 6), Vector2i(5, 6), Vector2i(4, 6)])
+			snake.spiders.assign([Vector2i(7, 6)])
 		snake.step()
-		check("%s_costs_one_life" % collision, game.lives == 2 and game.state == game.State.LIFE_LOST)
+		check("%s_costs_one_life" % collision, game.lives == 4 and game.state == game.State.LIFE_LOST)
 		await press("confirm", 20)
-		check("%s_restart_preserves_run" % collision, game.lives == 2 and game.score == 30 and game.stage.body.size() == 1 and game.stage.apples == 0)
+		check("%s_restart_preserves_run" % collision, game.lives == 4 and game.score == 30 and game.stage.body.size() == 1 and game.stage.apples == 0)
 	game.lives = 1
 	game.stage.steer(Vector2i.RIGHT)
-	game.stage.body.assign([Vector2i(23, 6), Vector2i(22, 6), Vector2i(21, 6)])
+	game.stage.body.assign([Vector2i(6, 6), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6), Vector2i(8, 6)])
 	game.stage.step()
 	check("zero_lives_game_over", game.state == game.State.GAME_OVER)
 	await settle()
 	save_frame("05_game_over")
 	await press("confirm", 20)
-	check("full_replay", game.score == 0 and game.lives == 3 and game.stage.body.size() == 1)
+	check("full_replay", game.score == 0 and game.lives == 5 and game.stage.body.size() == 1)
 	var first := Snake.new()
 	var second := Snake.new()
 	first.initialize(991)
@@ -79,7 +87,7 @@ func _ready() -> void:
 	for sample_index in 100:
 		first.spawn_apple()
 		second.spawn_apple()
-		check("seed_and_spawn_%d" % sample_index, first.apple == second.apple and first.apple not in first.body and first.apple != first.obstacle)
+		check("seed_and_spawn_%d" % sample_index, first.apple == second.apple and first.apple not in first.body)
 	await press("cancel", 20)
 	check("return_to_title", game.state == game.State.TITLE)
 	check("logical_resolution", get_viewport().get_visible_rect().size == Vector2(400, 240))

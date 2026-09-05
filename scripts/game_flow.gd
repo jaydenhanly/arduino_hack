@@ -16,7 +16,7 @@ var state := State.TITLE
 var previous_state := State.PLAYING
 var current_stage := "snake"
 var score := 0
-var lives := 3
+var lives := 5
 var active_seed := 2026
 var stage: RefCounted
 var board: Node2D
@@ -105,7 +105,7 @@ func _process(delta: float) -> void:
 func start_run(seed_value: int = 2026) -> void:
 	active_seed = seed_value
 	score = 0
-	lives = 3
+	lives = 5
 	current_stage = "snake"
 	maze_entry.clear()
 	arena_entry.clear()
@@ -137,6 +137,11 @@ func _connect_stage() -> void:
 	stage.points_earned.connect(_on_points)
 	stage.life_lost.connect(_on_life_lost)
 	stage.objective_completed.connect(_on_objective_completed)
+	if current_stage == "snake":
+		stage.boost_triggered.connect(_on_boost)
+
+func _on_boost() -> void:
+	audio.play("boost")
 
 func _on_points(amount: int) -> void:
 	score += amount
@@ -211,11 +216,11 @@ func _draw() -> void:
 		return
 	Art.text(self, {"snake": "01 SNAKE", "maze": "02 MAZE", "arena": "03 ARENA"}[current_stage], Vector2(14, 12))
 	Art.text(self, "SCORE %04d" % score, Vector2(154, 12))
-	for index in 3:
-		Art.bitmap(self, Art.HEART, Vector2(348 + index * 13, 11), 1, Art.INK if index < lives else Art.MID)
+	for index in 5:
+		Art.bitmap(self, Art.HEART, Vector2(312 + index * 12, 11), 1, Art.INK if index < lives else Art.MID)
 	draw_line(Vector2(12, 28), Vector2(388, 28), Art.DARK, 2)
 	if current_stage == "snake":
-		Art.centered(self, "APPLES %d/5   BUTTON C PAUSE" % stage.apples, 222)
+		Art.centered(self, "APPLES %d/%d   BUTTON C PAUSE" % [stage.apples, SnakeStage.APPLE_TARGET], 222)
 	elif current_stage == "maze":
 		Art.centered(self, "LURE THE GHOST INTO YOUR TAIL", 222)
 	else:

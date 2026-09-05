@@ -18,6 +18,7 @@ func _ready() -> void:
 	sounds["start"] = _tone([392.0, 523.0], 0.07)
 	sounds["ko"] = _tone([330.0, 262.0, 392.0], 0.06)
 	sounds["alarm"] = _tone([880.0, 660.0], 0.05)
+	sounds["boost"] = _tone([660.0, 880.0, 1175.0], 0.045)
 
 func play(cue: String) -> void:
 	if not sounds.has(cue):
