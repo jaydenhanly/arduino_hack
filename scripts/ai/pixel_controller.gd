@@ -19,7 +19,6 @@ var conversing: bool = false
 var exchange: int = 0
 var model_enabled: bool = true
 var request_timeout_seconds: float = 8.0
-var farewell_seconds: float = 1.5
 var journal: RefCounted = Journal.new()
 var adapter: Node
 
@@ -38,7 +37,9 @@ var _request_clock_deadline: float = 0.0
 var _history: Array[int] = []
 var _choice_history: Array[String] = []
 var _style: String = "representative"
-var _farewell_remaining: float = 0.0
+var _conversation_history: Array[Dictionary] = []
+var _turn_fallback: Dictionary = {}
+var _turn_ready: bool = false
 var _commentary_history: Array[Dictionary] = []
 var _message_source: String = "authored"
 var _message_sequence: int = 0
@@ -107,22 +108,24 @@ func begin_conversation() -> void:
 	exchange = 0
 	_history.clear()
 	_choice_history.clear()
+	_conversation_history.clear()
 	_style = Fallbacks.choose_style(journal, _rng)
 	_conversation_turn()
 
 
 func select_choice(index: int) -> void:
-	if not conversing or exchange >= 3 or choices.size() != 3 or index < 0 or index >= 3:
+	if not conversing or not _turn_ready or choices.size() != 3 or index < 0 or index >= 3:
 		return
+	_conversation_history.append({"emotion": emotion, "message": message, "choice": choices[index]})
 	_choice_history.append(choices[index])
 	_history.append(index)
+	while _conversation_history.size() > HISTORY_LIMIT:
+		_conversation_history.pop_front()
+		_choice_history.pop_front()
+		_history.pop_front()
 	exchange += 1
 	_invalidate()
-	if exchange == 3:
-		_show(Fallbacks.farewell(index))
-		_farewell_remaining = maxf(0.01, farewell_seconds)
-	else:
-		_conversation_turn()
+	_conversation_turn()
 
 
 func end_conversation() -> void:
@@ -132,7 +135,9 @@ func end_conversation() -> void:
 	choices.clear()
 	_history.clear()
 	_choice_history.clear()
-	_farewell_remaining = 0.0
+	_conversation_history.clear()
+	_turn_fallback.clear()
+	_turn_ready = false
 	_victory = false
 	_active = false
 	journal.clear()
@@ -158,7 +163,9 @@ func reset() -> void:
 	exchange = 0
 	_history.clear()
 	_choice_history.clear()
-	_farewell_remaining = 0.0
+	_conversation_history.clear()
+	_turn_fallback.clear()
+	_turn_ready = false
 	_show({"emotion": "curious", "message": "PIXEL ONLINE. Ready to play?"})
 
 
@@ -167,18 +174,9 @@ func tick(delta: float) -> void:
 		return
 	_clock += delta
 	if thinking and not model_enabled:
-		_fallback_reason = "model_disabled"
-		_invalidate()
-		changed.emit()
-	if conversing and exchange == 3:
-		_farewell_remaining -= delta
-		if _farewell_remaining <= 0.0:
-			end_conversation()
-		return
+		_fail_request("model_disabled")
 	if thinking and _clock >= _request_clock_deadline:
-		_fallback_reason = "timeout"
-		_invalidate()
-		changed.emit()
+		_fail_request("timeout")
 	if _active and not _pending_activity.is_empty() and _queued.is_empty() and not thinking:
 		if _clock - _last_comment >= PERIODIC_COOLDOWN:
 			var event := _pending_activity
@@ -189,8 +187,13 @@ func tick(delta: float) -> void:
 
 
 func conversation_context() -> Dictionary:
-	return {"summary": journal.summary(), "emotion": emotion,
-		"prior_choices": _choice_history.duplicate(), "exchange": exchange}
+	var counts := {}
+	for kind in ["collectible_streak", "ghost_defeated", "crossing_completed", "asteroid_streak", "danger_escaped"]:
+		if journal.count(kind) > 0:
+			counts[kind] = journal.count(kind)
+	return {"summary": {"score": journal.latest().get("score", 0), "seconds": journal.duration_msec() / 1000, "counts": counts},
+		"current_emotion": emotion, "history": _conversation_history.duplicate(true),
+		"selected_reply": "" if _choice_history.is_empty() else _choice_history.back(), "exchange": exchange}
 
 
 func commentary_history() -> Array[Dictionary]:
@@ -246,9 +249,31 @@ func _change_stage(stage: String) -> void:
 
 
 func _conversation_turn() -> void:
-	var candidates := Fallbacks.conversation(journal, _style, _history)
-	_show(candidates[0])
+	var candidates := Fallbacks.conversation(journal, _style, _history, exchange)
+	_turn_fallback = candidates[0].duplicate(true)
+	_turn_ready = false
+	if not model_enabled:
+		_finalize_turn(_turn_fallback, "fallback", "model_disabled")
+		return
+	_show({"emotion": "curious", "message": "Hold on! My thoughts are doing laps."})
 	_enqueue(candidates, true)
+
+
+func _finalize_turn(reply: Dictionary, provenance: String, reason: String = "") -> void:
+	if not conversing or _turn_ready:
+		return
+	_turn_ready = true
+	thinking = false
+	_show(reply, provenance, journal.sequence, reason)
+
+
+func _fail_request(reason: String) -> void:
+	_invalidate()
+	if conversing and not _turn_ready:
+		_finalize_turn(_turn_fallback, "fallback", reason)
+	else:
+		_fallback_reason = reason
+		changed.emit()
 
 
 func _show(reply: Dictionary, source: String = "authored", sequence: int = 0, reason: String = "") -> void:
@@ -285,8 +310,7 @@ func _dispatch() -> void:
 	if _in_flight or _queued.is_empty() or not is_inside_tree():
 		return
 	if not model_enabled:
-		_invalidate()
-		changed.emit()
+		_fail_request("model_disabled")
 		return
 	var request: Dictionary = _queued
 	_queued = {}
@@ -295,9 +319,7 @@ func _dispatch() -> void:
 		add_child(adapter)
 	var remaining := float(int(request.deadline) - Time.get_ticks_msec()) / 1000.0
 	if remaining <= 0.0:
-		thinking = false
-		_fallback_reason = "timeout"
-		changed.emit()
+		_fail_request("timeout")
 		return
 	_in_flight = true
 	_request_totals.requested += 1
@@ -306,6 +328,7 @@ func _dispatch() -> void:
 		request.conversation, remaining)
 	_in_flight = false
 	var current: bool = int(request.generation) == _generation and int(request.run_id) == _run_id and request.stage == _stage
+	current = current and (not request.conversation or (conversing and not _turn_ready))
 	var reason := "stale"
 	if current:
 		thinking = false
@@ -318,14 +341,22 @@ func _dispatch() -> void:
 				reason = adapter.last_failure
 			elif not validated.is_empty():
 				reason = "accepted"
-				if not request.conversation and Reply.repeats_commentary(validated.message, _commentary_history):
+				var recent: Array[Dictionary] = _conversation_history.duplicate(true) if request.conversation else _commentary_history
+				if request.conversation:
+					recent.append(_turn_fallback)
+				if Reply.repeats_commentary(validated.message, recent):
 					reason = "repeated_reply"
 				if reason == "accepted":
-					if not request.conversation:
+					if request.conversation:
+						_finalize_turn(validated, "llm_conversation")
+					else:
 						_record_comment(request.event, validated)
-					_show(validated, "llm_selected" if request.conversation else "llm", request.sequence)
-		if reason != "accepted" and not request.conversation:
-			_fallback_reason = reason
+						_show(validated, "llm", request.sequence)
+		if reason != "accepted":
+			if request.conversation:
+				_finalize_turn(_turn_fallback, "fallback", reason)
+			else:
+				_fallback_reason = reason
 		changed.emit()
 	_request_totals["accepted" if reason == "accepted" else ("stale" if reason == "stale" else "failed")] += 1
 	_last_request = {"run_id": request.run_id, "event_sequence": request.sequence,

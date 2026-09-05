@@ -122,6 +122,9 @@ func _drive_objective(target: int) -> void:
 			for tick in 2000:
 				if game.stage.get_progress() >= target or game.state != game.State.PLAYING:
 					return
+				if game.stage.needs_neutral or game.stage.reset_grace > 0.0:
+					game.stage.steer(Vector2i.ZERO)
+					game.stage.advance(0.25)
 				game.stage.steer(Vector2i.UP)
 				game.stage.advance(0.16)
 		"asteroids":
@@ -174,7 +177,7 @@ func _collect_pellets(target: int) -> void:
 		if best.is_empty():
 			last_error = "NO SAFE PELLET ROUTE"
 			return
-		maze.steer(best[0] - maze.body[0])
+		maze.steer(maze.heading_to(maze.body[0], best[0]))
 		maze.step()
 	last_error = "CHECKPOINT STEP LIMIT"
 
@@ -199,6 +202,8 @@ func _path(start: Vector2i, target: Vector2i, blocked: Array[Vector2i], wrapping
 			return result
 		for heading in Grid.DIRECTIONS:
 			var next := Grid.wrap(cell + heading) if wrapping else cell + heading
+			if maze != null:
+				next = maze.neighbor(cell, heading)
 			if not Grid.inside(next) or next in blocked or previous.has(next):
 				continue
 			if maze != null and not maze.walkable(next):

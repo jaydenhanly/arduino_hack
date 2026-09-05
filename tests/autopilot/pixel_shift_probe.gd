@@ -63,13 +63,13 @@ func _ready() -> void:
 			break
 		await get_tree().physics_frame
 	check("maze_entered", game.current_stage == "maze" and game.state == game.State.PLAYING)
-	check("head_and_three_tail_cells_retained", game.stage.body == original_body.slice(0, 4))
-	check("ghost_seed_becomes_ghost", game.stage.ghost == original_ghost_seed)
+	check("authored_entrance_and_tail", game.stage.body == game.stage.topology.body and game.stage.body.size() >= 9)
+	check("authored_ghost_spawn", game.stage.ghost == game.stage.topology.ghost_spawn)
 	check("final_apple_is_scatter_source", game.board.shift_source.apple == original_apple)
-	check("shift_wall_count_fixed", game.stage.walls.size() == Maze.WALL_COUNT)
+	check("authored_wall_cells", game.stage.walls.size() == game.stage.topology.wall_cells.size())
 	check("score_lives_continue", game.score == SnakeStage.APPLE_TARGET * 10 and game.lives == 5)
 	check("maze_waits_for_direction", not game.stage.started)
-	check("floor_connected", game.stage.reachable_cells(game.stage.body[0]).size() == 288 - game.stage.walls.size() * 10)
+	check("floor_connected", game.stage.reachable_cells(game.stage.body[0]).size() == 288 - game.stage.walls.size())
 	await settle()
 	save_frame("05_maze_start")
 	var won := await hunt_ghost()
@@ -136,7 +136,7 @@ func hunt_ghost() -> bool:
 		var best := Vector2i.ZERO
 		var best_value := -99999.0
 		for heading in Grid.DIRECTIONS:
-			var next: Vector2i = maze.body[0] + heading
+			var next: Vector2i = maze.neighbor(maze.body[0], heading)
 			if not maze.walkable(next) or next == maze.ghost:
 				continue
 			var future := Maze.new()
@@ -202,7 +202,7 @@ func _test_maze_rules() -> void:
 	check("player_head_hits_ghost", game.lives == 4 and game.state == game.State.LIFE_LOST)
 	score_before = game.score
 	game.restart_stage()
-	check("maze_restart_valid", game.current_stage == "maze" and game.lives == 4 and game.score == score_before and game.stage.body == game.maze_entry.body.slice(0, 4) and game.stage.collected == 0)
+	check("maze_restart_valid", game.current_stage == "maze" and game.lives == 4 and game.score == score_before and game.stage.body == game.stage.topology.body and game.stage.collected == 0)
 	game.stage.body.assign([Vector2i(16, 5), Vector2i(15, 5), Vector2i(14, 5), Vector2i(13, 5)])
 	game.stage.step_ghost()
 	check("ghost_hits_head", game.lives == 3 and game.state == game.State.LIFE_LOST)
@@ -221,7 +221,7 @@ func _test_checkpoints() -> void:
 				var expected := 0 if preset == "start" else (SnakeStage.APPLE_TARGET / 2 if preset == "midpoint" else SnakeStage.APPLE_TARGET - 1)
 				check("snake_preset_%s_count" % preset, game.stage.apples == expected)
 			else:
-				check("maze_preset_%s_valid" % preset, game.stage.body.size() == 4 and game.stage.walkable(game.stage.body[0]) and game.score >= SnakeStage.APPLE_TARGET * 10)
+				check("maze_preset_%s_valid" % preset, game.stage.body.size() >= 9 and game.stage.walkable(game.stage.body[0]) and game.score >= SnakeStage.APPLE_TARGET * 10)
 	game.playtest.select_stage("maze", "near-completion")
 	await settle()
 	save_frame("07_tail_trap_checkpoint")

@@ -12,6 +12,7 @@ const ORIGIN := Vector2(56, 36)
 const ROAD_WIDTH := 288.0
 const FIXED_STEP := 1.0 / 120.0
 const HOP_SECONDS := 0.15
+const RESET_GRACE_SECONDS := 0.25
 const SAFE_ROWS := [0, 1, 3, 5, 7, 9, 11]
 const CAR_COLORS := [Color("f6ad55"), Color("e76f91"), Color("78bdd4")]
 
@@ -28,6 +29,8 @@ var elapsed: float = 0.0
 var hop_flash: float = 0.0
 var crossing_flash: float = 0.0
 var pending_direction := Vector2i.ZERO
+var reset_grace: float = 0.0
+var needs_neutral: bool = false
 var _start_column: int = 12
 var _accumulator: float = 0.0
 var _hop_cooldown: float = 0.0
@@ -62,6 +65,8 @@ func initialize(previous: Dictionary, options: Dictionary = {}) -> void:
 	hop_flash = 0.0
 	crossing_flash = 0.0
 	pending_direction = Vector2i.ZERO
+	reset_grace = 0.0
+	needs_neutral = false
 	lanes.clear()
 	for lane_index in 5:
 		lanes.append({
@@ -88,6 +93,9 @@ func steer(direction: Vector2i) -> void:
 		return
 	if direction == Vector2i.ZERO:
 		pending_direction = Vector2i.ZERO
+		needs_neutral = false
+		return
+	if needs_neutral or reset_grace > 0.000000001:
 		return
 	var heading := Vector2i(signi(direction.x), 0) if direction.x != 0 else Vector2i(0, signi(direction.y))
 	var destination := player + heading
@@ -109,6 +117,7 @@ func advance(delta: float) -> void:
 
 func _tick() -> void:
 	elapsed += FIXED_STEP
+	reset_grace = maxf(0.0, reset_grace - FIXED_STEP)
 	_hop_cooldown = maxf(0.0, _hop_cooldown - FIXED_STEP)
 	hop_flash = maxf(0.0, hop_flash - FIXED_STEP)
 	crossing_flash = maxf(0.0, crossing_flash - FIXED_STEP)
@@ -194,6 +203,9 @@ func _complete_crossing() -> void:
 	pending_direction = Vector2i.ZERO
 	var completed := crossings >= target
 	stopped = completed
+	if not completed:
+		reset_grace = RESET_GRACE_SECONDS
+		needs_neutral = true
 	points_earned.emit(100)
 	journal_event.emit("crossing_completed", {"count": crossings, "outcome": "completed", "duration_ms": int((elapsed - _crossing_started_at) * 1000)})
 	_crossing_started_at = elapsed
@@ -212,6 +224,7 @@ func snapshot() -> Dictionary:
 		"player": player, "body": [player], "crossings": crossings,
 		"lanes": lanes.duplicate(true), "source_objects": objects,
 		"source": source.duplicate(true), "started": started, "elapsed": elapsed,
+		"reset_grace": reset_grace, "needs_neutral": needs_neutral,
 	}
 
 

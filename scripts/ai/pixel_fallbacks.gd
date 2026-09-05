@@ -3,39 +3,28 @@ extends RefCounted
 const Journal = preload("res://scripts/ai/run_journal.gd")
 const EMOTIONS := ["curious", "excited", "worried", "surprised", "proud"]
 const LINES := {
-	"run_started": ["curious", "PIXEL ONLINE. Ready to play?", "A fresh run. I am here."],
-	"stage_start": ["curious", "Here we are. I am watching.", "The world feels different here."],
-	"near_completion": ["curious", "The edges are getting restless.", "Something feels close to changing."],
-	"transformation_started": ["surprised", "The world is shifting.", "Wait. Those edges are moving."],
-	"transformation_completed": ["excited", "A new shape. Still us.", "We came through the change."],
-	"death": ["worried", "That run has ended. I am still here.", "A quiet moment. We can try again."],
-	"run_ended": ["curious", "That is the end of this run.", "We can leave this run here."],
-	"victory": ["proud", "You made it through this run.", "We reached the end together."],
-	"progress_milestone": ["excited", "A little more of the path behind us.", "That was another step forward."],
-	"collectible_streak": ["excited", "A string of little discoveries.", "Those pickups made a rhythm."],
-	"ghost_defeated": ["surprised", "That ghost is gone for now.", "You caught the ghost this time."],
-	"crossing_completed": ["proud", "Another crossing behind us.", "You reached the other side."],
-	"asteroid_streak": ["excited", "You broke a streak of space rocks.", "Those rocks did not stay whole."],
-	"danger_escaped": ["worried", "That danger is behind us for now.", "A close moment. You came through."],
+	"run_started": ["curious", "I'm awake! Is that an adventure or a very large snack?", "New run! I packed courage. Probably."],
+	"stage_start": ["curious", "Ooh! A new room for my extremely important confusion!", "I recognize this place! No, wait. I don't."],
+	"near_completion": ["curious", "My bolts are tingling. Is the floor plotting something?", "I smell a surprise! Do robots smell?"],
+	"transformation_started": ["surprised", "Wait! Who folded the universe while I was looking?", "My map just turned into soup!"],
+	"transformation_completed": ["excited", "New shape! Same tiny me! Slightly louder screaming!", "I survived the world's furniture rearrangement!"],
+	"death": ["worried", "Oh! My brave little circuits need a minute.", "That hurt my imaginary knees. I'm still here!"],
+	"run_ended": ["curious", "Is that the end? I was just finding my elbows!", "I'm putting this run in my very tiny thought cupboard."],
+	"victory": ["proud", "We did it! I'm awarding us a magnificent imaginary hat!", "My victory dance has too many elbows!"],
+	"progress_milestone": ["excited", "Ooh! My happy circuits just did a cartwheel!", "I'm collecting little reasons to squeak!"],
+	"collectible_streak": ["excited", "More snacks! My imaginary pockets are getting heroic!", "I want to name every crumb. This may take a while!"],
+	"ghost_defeated": ["surprised", "Our tail ate a ghost?! I have several new questions!", "Boo to YOU, spooky bedsheet!"],
+	"crossing_completed": ["proud", "Dry land! I would kiss it, but I forgot my lips!", "I'm calling that bank my emotional support rectangle!"],
+	"asteroid_streak": ["excited", "Space gravel! I'm mentally sweeping it under a planet!", "Those rocks had too many corners anyway!"],
+	"danger_escaped": ["worried", "Eep! My courage just hid behind a very small bolt!", "I briefly became a screaming calculator!"],
 }
 const OPENERS := {
-	"representative": "We have this run to look back on.",
-	"careful": "Those careful moments caught my eye.",
-	"aggressive": "Those bold moments caught my eye.",
-	"fast": "The quick moments stood out this run.",
+	"representative": "I have so many thoughts! Most of them are squeaking!",
+	"careful": "My nerves are wearing tiny crash helmets! What a run!",
+	"aggressive": "I think our tail deserves its own victory hat!",
+	"fast": "My thoughts are still trying to catch up with us!",
 }
-const TOPICS := ["What stood out?", "How did it feel?", "What about another run?"]
-const FOLLOWUPS := [
-	["Tell me one detail.", "That mattered to me.", "A different thought?"],
-	["I felt that too.", "What did you notice?", "A quiet finish sounds good."],
-	["A fresh start sounds good.", "One last detail?", "Just this run for now."],
-]
-const ACKNOWLEDGEMENTS := [
-	["One detail, then.", "We can sit with that.", "A different thought, then."],
-	["A shared moment, then.", "Here is what I noticed.", "A quiet finish, then."],
-	["A fresh start can wait.", "One last detail, then.", "Just this run, then."],
-]
-const FINAL_CHOICES := ["Thanks for watching.", "I liked this run.", "See you next time."]
+const TOPICS := ["Which bit made you squeak?", "Tell me your oddest thought.", "Did your circuits survive?"]
 
 
 static func commentary(kind: String, rng: RandomNumberGenerator) -> Array[Dictionary]:
@@ -60,47 +49,44 @@ static func choose_style(journal: RefCounted, rng: RandomNumberGenerator) -> Str
 static func detail(journal: RefCounted, style: String) -> String:
 	if style == "careful" and journal.count("danger_escaped") > 0:
 		var count: int = journal.count("danger_escaped")
-		return "You escaped danger %d time%s." % [count, "" if count == 1 else "s"]
+		return "I counted %d danger escapes. My bolts nearly fled!" % count
 	if style == "aggressive" and journal.count("ghost_defeated") > 0:
 		var count: int = journal.count("ghost_defeated")
-		return "You defeated %d ghost%s." % [count, "" if count == 1 else "s"]
+		return "%d ghosts! I need a bigger imaginary broom!" % count
 	if style == "aggressive" and journal.count("asteroid_streak") > 0:
 		var count: int = journal.count("asteroid_streak")
-		return "You made %d asteroid streak%s." % [count, "" if count == 1 else "s"]
+		return "%d rock streaks! I call that cosmic confetti!" % count
 	if style == "fast":
 		if journal.duration_msec() > 0:
-			return "This run took %d seconds." % (journal.duration_msec() / 1000)
-		return "This run recorded quick moments."
+			return "%d seconds! My thoughts arrived fashionably late!" % (journal.duration_msec() / 1000)
+		return "My thoughts need little running shoes!"
 	if style == "careful":
-		return "This run recorded careful moments."
+		return "My courage has a very small safety helmet!"
 	if style == "aggressive":
-		return "This run recorded bold moments."
-	return "This run reached a score of %d." % int(journal.latest().get("score", 0))
+		return "My bravery is mostly enthusiastic beeping!"
+	return "%d points! Can I stack them into a robot throne?" % int(journal.latest().get("score", 0))
 
 
-static func conversation(journal: RefCounted, style: String, history: Array[int]) -> Array[Dictionary]:
+static func conversation(journal: RefCounted, style: String, history: Array[int], turn: int = 0) -> Array[Dictionary]:
 	var fact := detail(journal, style)
 	var message: String = OPENERS[style]
 	var options: Array = TOPICS
 	var emotion := "proud"
-	if history.size() == 1:
-		var branch := history[0]
-		message = [fact, "I only know the moments we recorded.", "A new run starts with a clean slate."][branch]
-		options = FOLLOWUPS[branch]
-		emotion = ["curious", "proud", "excited"][branch]
-	elif history.size() == 2:
-		message = "%s %s" % [ACKNOWLEDGEMENTS[history[0]][history[1]], fact]
-		options = FINAL_CHOICES
-		emotion = "curious"
+	if not history.is_empty():
+		var branch: int = history.back()
+		var reactions := [
+			[fact, "My favorite bit? When my panic turned into confetti!", "I am filing that thought under 'magnificent squeaking'!"],
+			["I suspect the universe is a snack with complicated rules!", "What if our tail was a very determined scarf?", "My oddest thought has escaped. It was wearing a hat!"],
+			["My circuits survived! My dignity is still buffering!", "I might be three excited calculators in a coat!", "I'm okay! My imaginary knees are just applauding!"],
+		]
+		message = reactions[branch][posmod(turn, 3)]
+		options = [
+			["What surprised you most?", "Give that thought a name.", "Are you still buzzing?"],
+			["Which moment inspired that?", "Make it even stranger.", "How does a robot celebrate?"],
+			["Tell me one more detail.", "What are imaginary knees?", "I might be a calculator too."],
+		][branch]
+		emotion = ["curious", "surprised", "excited"][branch]
 	return [
 		{"emotion": emotion, "message": message, "choices": options.duplicate()},
-		{"emotion": emotion, "message": "I am here. " + message, "choices": options.duplicate()},
+		{"emotion": emotion, "message": message, "choices": options.duplicate()},
 	]
-
-
-static func farewell(last_choice: int) -> Dictionary:
-	return {"emotion": "proud", "message": [
-		"Thanks for sharing this run. See you next time.",
-		"I am glad we had this run. See you next time.",
-		"See you next time. A fresh run awaits.",
-	][clampi(last_choice, 0, 2)]}

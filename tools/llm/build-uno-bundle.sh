@@ -84,10 +84,12 @@ cp "$VENDOR_DIR/ATTRIBUTION.md" "$STAGE/llm/ATTRIBUTION.md"
 cp "$VENDOR_DIR/models/gemma-3-270m-it-Q4_K_M.gguf" "$STAGE/llm/models/"
 cp -RP "$VENDOR_DIR/runtimes/linux-arm64/." "$STAGE/llm/runtimes/linux-arm64/"
 chmod +x "$STAGE/llm/runtimes/linux-arm64/llama-server"
+cp "$PROJECT_DIR/summer-feedback.json" "$STAGE/summer-feedback.json"
 
-(cd "$STAGE" && zip -qry "$OUTPUT" llm)
+(cd "$STAGE" && zip -qry "$OUTPUT" llm summer-feedback.json)
 unzip -tq "$OUTPUT" >/dev/null
 unzip -Z1 "$OUTPUT" > "$STAGE/archive-files.txt"
 grep -qx 'llm/models/gemma-3-270m-it-Q4_K_M.gguf' "$STAGE/archive-files.txt"
 grep -qx 'llm/runtimes/linux-arm64/llama-server' "$STAGE/archive-files.txt"
+grep -qx 'summer-feedback.json' "$STAGE/archive-files.txt"
 printf 'Bundled export ready: %s\n' "$OUTPUT"

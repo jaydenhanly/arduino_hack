@@ -53,7 +53,7 @@ func _draw_conversation() -> void:
 	draw_rect(Rect2(12, 36, 372, 191), INK, false, 2)
 	Art.text(self, "PIXEL / RUN COMPLETE", Vector2(27, 49), 1, MUTED)
 	_avatar(Vector2(27, 69))
-	var lines := wrap_text(controller.message, 47, 3)
+	var lines := wrap_text(controller.message, 47, 2)
 	for index in lines.size():
 		Art.text(self, lines[index], Vector2(75, 73 + index * 12), 1, INK)
 	_thinking(Vector2(347, 50))
@@ -67,10 +67,9 @@ func _draw_conversation() -> void:
 		Art.text(self, ">" if selected == index else " ", area.position + Vector2(7, 7), 1, color)
 		Art.text(self, controller.choices[index], area.position + Vector2(23, 7), 1, color)
 	if not controller.choices.is_empty():
-		Art.text(self, "A CHOOSE  /  B SKIP", Vector2(27, 205), 1, MUTED)
-		Art.text(self, "%d/3" % mini(controller.exchange + 1, 3), Vector2(344, 205), 1, MUTED)
+		Art.text(self, "A CHOOSE  /  B EXIT", Vector2(27, 205), 1, MUTED)
 	else:
-		Art.text(self, "B REPLAY MENU", Vector2(27, 205), 1, MUTED)
+		Art.text(self, "THINKING...  /  B EXIT", Vector2(27, 205), 1, MUTED)
 
 func _thinking(origin: Vector2) -> void:
 	if not controller.thinking:
@@ -118,6 +117,9 @@ static func wrap_text(value: String, width: int, limit: int) -> Array[String]:
 		if not line.is_empty() and line.length() + word.length() + 1 > width:
 			lines.append(line)
 			line = ""
+		while word.length() > width:
+			lines.append(word.left(width))
+			word = word.substr(width)
 		line += (" " if not line.is_empty() else "") + word
 	if not line.is_empty():
 		lines.append(line)
