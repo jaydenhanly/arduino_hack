@@ -22,6 +22,15 @@ const BOT_LENGTH := 3
 const FOOD_COUNT := 8
 const PLAYER_BASE_STEP := 0.20
 const PLAYER_MAX_STEP := 0.32
+const HAZARD_TIERS := [
+	{"at": 60.0, "walls": 6, "spiders": 0, "banner": "WALLS RISE"},
+	{"at": 120.0, "walls": 6, "spiders": 2, "banner": "SPIDERS!"},
+	{"at": 180.0, "walls": 0, "spiders": 2, "banner": "MORE SPIDERS!"},
+	{"at": 240.0, "walls": 4, "spiders": 2, "banner": "THE WALLS CLOSE IN"},
+]
+const SPIDER_STEP_SECONDS := 0.4
+const LOOKAHEAD := 4
+const BANNER_SECONDS := 2.5
 const KO_POINTS := 50
 const SURVIVAL_POINTS := 200
 
@@ -39,6 +48,12 @@ var pending_direction := Vector2i.ZERO
 var growth := 0
 var food: Array[Vector2i] = []
 var bots: Array[Bot] = []
+var walls: Array[Vector2i] = []
+var spiders: Array[Vector2i] = []
+var tier_index := 0
+var spider_elapsed := 0.0
+var banner := ""
+var banner_until := 0.0
 var spawned := 0
 var kos := 0
 var survived := 0.0
@@ -60,6 +75,12 @@ func initialize(snapshot: Dictionary, seed_value: int = 2026) -> void:
 	growth = maxi(0, START_LENGTH - body.size())
 	food.clear()
 	bots.clear()
+	walls.clear()
+	spiders.clear()
+	tier_index = 0
+	spider_elapsed = 0.0
+	banner = ""
+	banner_until = 0.0
 	spawned = 0
 	kos = 0
 	survived = 0.0
@@ -126,10 +147,19 @@ func advance(delta: float) -> void:
 	while spawn_timer >= spawn_interval:
 		spawn_timer -= spawn_interval
 		spawn_bot()
+	while tier_index < HAZARD_TIERS.size() and survived >= HAZARD_TIERS[tier_index].at:
+		_spawn_hazards(HAZARD_TIERS[tier_index])
+		tier_index += 1
 	if meltdown():
 		_burn()
 		if stopped:
 			return
+	spider_elapsed += delta
+	while spider_elapsed >= SPIDER_STEP_SECONDS and not stopped:
+		spider_elapsed -= SPIDER_STEP_SECONDS
+		step_spiders()
+	if stopped:
+		return
 	elapsed += delta
 	while elapsed >= player_step_seconds() and not stopped:
 		elapsed -= player_step_seconds()
@@ -145,7 +175,89 @@ func advance(delta: float) -> void:
 			bot.elapsed -= bot_step_seconds(bot)
 			step_bot(bot)
 
+func banner_visible() -> bool:
+	return not banner.is_empty() and survived < banner_until
+
+func _spawn_hazards(tier: Dictionary) -> void:
+	banner = tier.banner
+	banner_until = survived + BANNER_SECONDS
+	var forbidden := {}
+	var cursor := body[0]
+	for index in LOOKAHEAD:
+		cursor += direction
+		forbidden[cursor] = true
+	for heading in Grid.DIRECTIONS:
+		forbidden[body[0] + heading] = true
+		for bot in bots:
+			forbidden[bot.body[0] + heading] = true
+	for index in int(tier.walls):
+		var free := _free_cells(forbidden)
+		if free.is_empty():
+			break
+		var cell: Vector2i = free[rng.randi_range(0, free.size() - 1)]
+		walls.append(cell)
+		forbidden[cell] = true
+	for index in int(tier.spiders):
+		var free := _free_cells(forbidden)
+		var far: Array[Vector2i] = []
+		for cell in free:
+			if absi(cell.x - body[0].x) + absi(cell.y - body[0].y) >= 8:
+				far.append(cell)
+		if far.is_empty():
+			far = free
+		if far.is_empty():
+			break
+		var cell: Vector2i = far[rng.randi_range(0, far.size() - 1)]
+		spiders.append(cell)
+		forbidden[cell] = true
+
+func _free_cells(forbidden: Dictionary) -> Array[Vector2i]:
+	var free: Array[Vector2i] = []
+	for row in SIZE.y:
+		for column in SIZE.x:
+			var cell := Vector2i(column, row)
+			if not forbidden.has(cell) and not _occupied(cell):
+				free.append(cell)
+	return free
+
+func step_spiders() -> void:
+	for index in spiders.size():
+		var spider := spiders[index]
+		var bite := Vector2i(-1, -1)
+		var options: Array[Vector2i] = []
+		for heading in Grid.DIRECTIONS:
+			var candidate := spider + heading
+			if not inside(candidate) or burning(candidate) or candidate in walls or candidate in spiders:
+				continue
+			if candidate == body[0]:
+				bite = candidate
+				continue
+			if candidate in body or candidate in food:
+				continue
+			var victim := _bot_at(candidate)
+			if victim != null:
+				if candidate == victim.body[0]:
+					_kill_bot(victim, false)
+					spiders[index] = candidate
+					bite = Vector2i(-2, -2)
+					break
+				continue
+			options.append(candidate)
+		if bite == Vector2i(-2, -2):
+			continue
+		if bite.x >= 0:
+			if invulnerable:
+				continue
+			spiders[index] = bite
+			_damage("SPIDER BIT YOU")
+			return
+		if not options.is_empty():
+			spiders[index] = options[rng.randi_range(0, options.size() - 1)]
+
 func _burn() -> void:
+	for spider in spiders.duplicate():
+		if burning(spider):
+			spiders.erase(spider)
 	for bot in bots.duplicate():
 		for cell in bot.body:
 			if burning(cell):
@@ -179,6 +291,10 @@ func step() -> void:
 		reason = "WALL HIT"
 	elif burning(next):
 		reason = "BURNED ALIVE"
+	elif next in walls:
+		reason = "WALL HIT"
+	elif next in spiders:
+		reason = "SPIDER BIT YOU"
 	elif next in body.slice(0, body.size() if growth > 0 else body.size() - 1):
 		reason = "TAIL HIT"
 	elif _bot_body_at(next) != null:
@@ -208,7 +324,7 @@ func step_bot(bot: Bot) -> void:
 	var next := bot.body[0] + heading
 	var own_solid := bot.body.slice(0, bot.body.size() if bot.growth > 0 else bot.body.size() - 1)
 	var hit_player := next in body
-	if not inside(next) or burning(next) or next in own_solid or hit_player or _bot_at(next, bot) != null:
+	if not inside(next) or burning(next) or next in walls or next in spiders or next in own_solid or hit_player or _bot_at(next, bot) != null:
 		_kill_bot(bot, hit_player)
 		return
 	bot.body.push_front(next)
@@ -245,7 +361,7 @@ func _bot_at(cell: Vector2i, skip: Bot = null) -> Bot:
 	return null
 
 func _occupied(cell: Vector2i) -> bool:
-	return burning(cell) or cell in body or cell in food or _bot_at(cell) != null
+	return burning(cell) or cell in walls or cell in spiders or cell in body or cell in food or _bot_at(cell) != null
 
 func _spawn_food() -> void:
 	var free: Array[Vector2i] = []
@@ -303,6 +419,13 @@ func _bot_choose(bot: Bot) -> Vector2i:
 				var cell := Vector2i(column, row)
 				if burning(cell):
 					blocked[cell] = true
+	for cell in walls:
+		blocked[cell] = true
+	for spider in spiders:
+		blocked[spider] = true
+		if generation >= 2:
+			for heading in Grid.DIRECTIONS:
+				blocked[spider + heading] = true
 	for cell in body:
 		blocked[cell] = true
 	if generation >= 4 and direction != Vector2i.ZERO:

@@ -42,6 +42,12 @@ func _auto_steer(arena: RefCounted) -> void:
 			for column in arena.SIZE.x:
 				if arena.burning(Vector2i(column, row)):
 					blocked[Vector2i(column, row)] = true
+	for cell in arena.walls:
+		blocked[cell] = true
+	for spider in arena.spiders:
+		blocked[spider] = true
+		for heading in Grid.DIRECTIONS:
+			blocked[spider + heading] = true
 	for cell in arena.body:
 		blocked[cell] = true
 	for bot in arena.bots:

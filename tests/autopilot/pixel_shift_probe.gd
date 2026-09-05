@@ -310,6 +310,39 @@ func _test_arena_rules() -> void:
 	arena.body.assign([Vector2i(1, 12), Vector2i(2, 12), Vector2i(3, 12)])
 	arena.advance(0.01)
 	check("meltdown_burns_head", game.state == game.State.LIFE_LOST and game.damage_reason == "BURNED ALIVE")
+	game.lives = 3
+	game.restart_stage()
+	arena = game.stage
+	arena.started = true
+	arena.bots.clear()
+	arena.survived = 59.9
+	arena.advance(0.2)
+	check("hazard_tier_one_walls", arena.walls.size() == 6 and arena.spiders.is_empty() and arena.banner == "WALLS RISE" and arena.banner_visible())
+	var ahead := true
+	for index in range(1, 5):
+		ahead = ahead and (arena.body[0] + arena.direction * index) not in arena.walls
+	check("hazard_walls_avoid_path_ahead", ahead)
+	arena.survived = 119.9
+	arena.advance(0.2)
+	check("hazard_tier_two_spiders", arena.walls.size() == 12 and arena.spiders.size() == 2)
+	arena.walls.assign([arena.body[0] + arena.direction])
+	arena.step()
+	check("hazard_wall_costs_life", game.state == game.State.LIFE_LOST and game.damage_reason == "WALL HIT")
+	game.restart_stage()
+	arena = game.stage
+	arena.started = true
+	arena.bots.clear()
+	arena.spiders.assign([arena.body[0] + Vector2i.UP])
+	arena.step_spiders()
+	check("hazard_spider_bites_head", game.state == game.State.LIFE_LOST and game.damage_reason == "SPIDER BIT YOU")
+	game.restart_stage()
+	arena = game.stage
+	arena.bots.clear()
+	var crawler = arena.spawn_bot()
+	crawler.body.assign([Vector2i(10, 3), Vector2i(9, 3), Vector2i(8, 3)])
+	arena.spiders.assign([Vector2i(11, 3)])
+	arena.step_spiders()
+	check("hazard_spider_kills_bot", crawler not in arena.bots and arena.spiders[0] == Vector2i(10, 3))
 
 func _test_checkpoints() -> void:
 	for stage_name in ["snake", "maze", "arena"]:

@@ -2,6 +2,7 @@ extends Node2D
 
 const Grid = preload("res://scripts/grid.gd")
 const Art = preload("res://scripts/pixel_art.gd")
+const Cph = preload("res://scripts/copenhagen.gd")
 const SnakeStage = preload("res://scripts/snake_stage.gd")
 const Board = preload("res://scripts/game_board.gd")
 const MazeStage = preload("res://scripts/maze_stage.gd")
@@ -66,6 +67,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif state in [State.PLAYING, State.SHIFTING]:
 			previous_state = state
 			state = State.PAUSED
+		elif state == State.TITLE:
+			Art.next_theme()
 	elif state == State.TITLE and event is InputEventKey and event.pressed and event.keycode == KEY_3:
 		start_stage = "arena"
 		start_run()
@@ -217,7 +220,8 @@ func _draw() -> void:
 	Art.text(self, {"snake": "01 SNAKE", "maze": "02 MAZE", "arena": "03 ARENA"}[current_stage], Vector2(14, 12))
 	Art.text(self, "SCORE %04d" % score, Vector2(154, 12))
 	for index in 5:
-		Art.bitmap(self, Art.HEART, Vector2(312 + index * 12, 11), 1, Art.INK if index < lives else Art.MID)
+		var heart: Color = (Cph.C.red if Art.cph() else Art.INK) if index < lives else Art.MID
+		Art.bitmap(self, Art.HEART, Vector2(312 + index * 12, 11), 1, heart)
 	draw_line(Vector2(12, 28), Vector2(388, 28), Art.DARK, 2)
 	if current_stage == "snake":
 		Art.centered(self, "APPLES %d/%d   BUTTON C PAUSE" % [stage.apples, SnakeStage.APPLE_TARGET], 222)
@@ -230,6 +234,9 @@ func _draw() -> void:
 	elif state == State.PLAYING and current_stage == "arena" and stage.started and stage.meltdown():
 		if fmod(clock, 0.5) < 0.3:
 			Art.centered(self, "MELTDOWN! THE ARENA IS BURNING", 31)
+	elif state == State.PLAYING and current_stage == "arena" and stage.started and stage.banner_visible():
+		if fmod(clock, 0.4) < 0.28:
+			Art.centered(self, stage.banner, 31, 2)
 	elif state == State.SHIFTING:
 		Art.centered(self, "PIXEL SHIFT / THE RULES ARE CHANGING", 31)
 	elif state == State.PLAYING and current_stage == "snake" and stage.awaiting_input:
@@ -261,18 +268,24 @@ func _panel(title: String, line_one: String, line_two: String, top: int = 85, he
 	Art.centered(self, line_two, top + height - 15)
 
 func _draw_title() -> void:
+	var cph := Art.cph()
 	draw_rect(Rect2(12, 12, 376, 216), Art.INK, false, 2)
-	Art.text(self, "RETRO-AI / ONE CONTINUOUS GAME", Vector2(24, 24), 1, Art.DARK)
+	Art.text(self, "COPENHAGEN / ONE CONTINUOUS GAME" if cph else "RETRO-AI / ONE CONTINUOUS GAME", Vector2(24, 24), 1, Art.DARK)
 	Art.centered(self, "PIXEL", 48, 4)
 	Art.centered(self, "SHIFT", 83, 4)
 	for index in 7:
 		var position_value := Vector2(123 + index * 20, 127 + (8 if index > 3 else 0))
-		draw_rect(Rect2(position_value, Vector2(16, 16)), Art.INK if index == 0 else Art.DARK)
+		draw_rect(Rect2(position_value, Vector2(16, 16)), board._head() if index == 0 else board._body())
 		if index == 0:
-			draw_rect(Rect2(position_value + Vector2(3, 3), Vector2(3, 3)), Art.LIGHT)
-	Art.centered(self, "A LITTLE SNAKE. A BIG CHANGE.", 157)
+			draw_rect(Rect2(position_value + Vector2(3, 3), Vector2(3, 3)), board._eye())
+	Art.centered(self, "A LITTLE SNAKE. A BIG CITY." if cph else "A LITTLE SNAKE. A BIG CHANGE.", 157)
 	if fmod(clock, 1.1) < 0.85:
-		Art.centered(self, "BUTTON A START", 181, 2)
-	Art.centered(self, "JOYSTICK MOVE  /  BUTTON C PAUSE", 211, 1, Art.DARK)
+		Art.centered(self, "BUTTON A START", 173 if cph else 181, 2)
+	Art.centered(self, "JOYSTICK MOVE  /  BUTTON C STYLE", 190 if cph else 211, 1, Art.DARK)
+	if cph:
+		# Five landmarks along the bottom edge, the same sprites the maze walls use.
+		Cph.skyline(self, 21, 198)
+	var style := "STYLE " + Art.theme.to_upper()
+	Art.text(self, style, Vector2(386 - (style.length() * 6 - 1), 24), 1, Art.DARK)
 	if start_stage == "arena":
-		Art.text(self, "ARENA ONLY", Vector2(316, 24), 1, Art.DARK)
+		Art.text(self, "ARENA ONLY", Vector2(316, 36), 1, Art.DARK)
