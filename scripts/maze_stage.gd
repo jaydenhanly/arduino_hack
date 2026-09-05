@@ -40,14 +40,14 @@ var stopped := false
 var invulnerable := false
 var source: Dictionary = {}
 var seed := 0
-var target := 30
+var target := 97
 var rng := RandomNumberGenerator.new()
 
 func initialize(source_snapshot: Dictionary, options: Dictionary = {}) -> void:
 	source = source_snapshot.duplicate(true)
 	seed = int(options.get("seed", source.get("seed", 0)))
 	rng.seed = seed
-	target = maxi(1, int(options.get("target", 30)))
+	target = maxi(1, int(options.get("target", 97)))
 	ghost_respawn_seconds = maxf(0.05, float(options.get("ghost_respawn_seconds", 4.0)))
 	ghost_warning_seconds = clampf(float(options.get("ghost_warning_seconds", 0.75)), 0.05, ghost_respawn_seconds)
 	walls.clear()

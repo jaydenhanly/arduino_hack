@@ -48,7 +48,7 @@ network, audio, haptics, or external display output is required to understand pl
 | Internal stage | Normal target | Demo target |
 | --- | ---: | ---: |
 | Snake apples | 10 | 3 |
-| Maze pellets | 30 | 10 |
+| Maze pellets | 97 | 10 |
 | Crossings | 3 | 1 |
 | Asteroid destructions | 12 | 4 |
 

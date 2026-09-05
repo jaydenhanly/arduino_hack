@@ -3,7 +3,7 @@ extends RefCounted
 const STAGES: Array[String] = ["snake", "maze", "frogger", "asteroids"]
 const TRANSITION_SECONDS := 3.0
 const TARGETS := {
-	"normal": {"snake": 10, "maze": 30, "frogger": 3, "asteroids": 12},
+	"normal": {"snake": 10, "maze": 97, "frogger": 3, "asteroids": 12},
 	"demo": {"snake": 3, "maze": 10, "frogger": 1, "asteroids": 4},
 }
 

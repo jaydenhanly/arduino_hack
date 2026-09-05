@@ -4,7 +4,7 @@ const Grid = preload("res://scripts/grid.gd")
 const SEED := 42
 const TICK := 1.0 / 120.0
 const TARGETS := {
-	"normal": {"snake": 10, "maze": 30, "frogger": 3, "asteroids": 12},
+	"normal": {"snake": 10, "maze": 97, "frogger": 3, "asteroids": 12},
 	"demo": {"snake": 3, "maze": 10, "frogger": 1, "asteroids": 4},
 }
 
